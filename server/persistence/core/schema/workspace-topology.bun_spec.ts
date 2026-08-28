@@ -53,7 +53,12 @@ describe('independent canvas topology', () => {
   })
 
   test('migrates independent canvas assignments and cables while preserving primary IDs', async () => {
-    const { handle, migrations } = await createDatabase(CORE_MIGRATIONS.length - 1)
+    const workspaceMigrationIndex = CORE_MIGRATIONS.findIndex(
+      (migration) => migration.id === '0032_workspace_owned_topology',
+    )
+    expect(workspaceMigrationIndex).toBeGreaterThan(0)
+    const { handle, migrations } = await createDatabase(workspaceMigrationIndex)
+    const workspaceMigrations = migrations.slice(0, workspaceMigrationIndex + 1)
     try {
       const database = handle.database
       const addItem = database.query(`
@@ -130,9 +135,9 @@ describe('independent canvas topology', () => {
         ) VALUES (1, 2, ?, 'wasm-1', 'layout', 'route', '{"points":[]}', 1)
       `).run(connection.id)
 
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({
+      await expect(applyCommittedMigrations(handle, workspaceMigrations)).resolves.toEqual({
         applied: 1,
-        currentVersion: CORE_MIGRATIONS.length,
+        currentVersion: workspaceMigrationIndex + 1,
       })
 
       expect(database.query(`
@@ -162,9 +167,9 @@ describe('independent canvas topology', () => {
         SELECT scope, owner_project_id FROM inventory_items WHERE id = ?
       `).get(host.id)).toEqual({ scope: 'project', owner_project_id: 1 })
       expect(database.query('PRAGMA foreign_key_check').all()).toEqual([])
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({
+      await expect(applyCommittedMigrations(handle, workspaceMigrations)).resolves.toEqual({
         applied: 0,
-        currentVersion: CORE_MIGRATIONS.length,
+        currentVersion: workspaceMigrationIndex + 1,
       })
     } finally {
       closeManagedDatabase(handle)

@@ -82,7 +82,7 @@ import { boundedTelemetryPayloads, compactAgentStatus } from './live-events/agen
 import { createRepositoryContext } from './persistence/core/repositories/repository-context.ts'
 import { createSharingRepository } from './persistence/core/repositories/sharing-repository.ts'
 import { SharingInstallationIdentityService } from './sharing/installation-identity.mjs'
-import { SharingEnrollmentCoordinator, sharingEnvironmentEnabled } from './sharing/enrollment-coordinator.mjs'
+import { SharingEnrollmentCoordinator } from './sharing/enrollment-coordinator.mjs'
 import { ShareProjector } from './sharing/share-projector.mjs'
 import { SharingPublicIdService } from './sharing/public-id-service.mjs'
 import { LabGdPublicationClient } from './sharing/labgd-client.mjs'
@@ -152,7 +152,7 @@ const updateCheckEnabled = runtimeConfig.updateCheckEnabled
 const runningRevision = process.env.APP_REVISION ?? 'unknown'
 const registryOrigin = 'https://registry.homelabinventory.com'
 const catalogRuntime = new CatalogRuntime({ officialOrigin: registryOrigin })
-const registryRefreshIntervalMs = isDemoMode
+const registryRefreshIntervalMs = !runtimeConfig.registryNetworkRefreshEnabled
   ? 0
   : readCatalogRefreshInterval()
 const backupEnvironmentPassphrase = process.env.BACKUP_ENCRYPTION_PASSPHRASE?.trim() || null
@@ -195,8 +195,6 @@ if (isDemoMode) {
   demoManager = new DemoSessionManager({
     appVersion: packageJson.version,
     catalogBootstrap: async (currentStore) => {
-      const snapshotService = catalogRuntime.forStore(currentStore)
-      await snapshotService.refreshConnected()
       await catalogRuntime.start(currentStore)
     },
     dataDir,
@@ -585,7 +583,7 @@ const sharingEffectiveEnabled = Boolean(
   store
   && !isDemoMode
   && !stagingPolicy.sharingDisabled
-  && sharingEnvironmentEnabled(),
+  && runtimeConfig.labGdEnabled,
 )
 const labGdOrigin = process.env.LABGD_ORIGIN?.trim() || 'https://lab.gd'
 const sharingIdentity = sharingEffectiveEnabled
@@ -710,7 +708,7 @@ registerUpdateRoutes(app, {
   }),
 })
 
-const installationIdentity = !isDemoMode && !stagingPolicy.registryIdentityDisabled
+const installationIdentity = !isDemoMode && !stagingPolicy.registryIdentityDisabled && runtimeConfig.registryIdentityEnabled
   ? new InstallationIdentityService({ dataDir, officialOrigin: registryOrigin })
   : null
 const contributionDelivery = installationIdentity
@@ -805,10 +803,10 @@ registerRegistryRoutes(app, {
   catalogStatusService,
   onUpdatesChanged: () => systemsAttention?.markProjectDirty(store, store.projectId, 'registry-decision-changed'),
   registryPolicy: isDemoMode
-    ? { forcedMode: 'connected', contributionsAllowed: false, automaticSafeUpdatesForced: true }
+    ? { forcedMode: 'connected', contributionsAllowed: false, networkRefreshAllowed: false, automaticSafeUpdatesForced: true }
     : stagingRegistryPolicy(stagingPolicy),
 })
-if (!stagingPolicy.registryNetworkRefreshDisabled) catalogRefreshCoordinator?.start()
+if (runtimeConfig.registryNetworkRefreshEnabled && !stagingPolicy.registryNetworkRefreshDisabled) catalogRefreshCoordinator?.start()
 catalogStatusService?.start()
 const backupSchedule = stagingPolicy.scheduledBackupsDisabled ? null : backupScheduler?.start()
 registerProjectRoutes(app, { withStore })
@@ -856,7 +854,7 @@ const updateCheckSchedule = startUpdateCheckSchedule({
     kind: 'updates.status-changed',
   }),
 })
-if (contributionDelivery && store && !stagingPolicy.registryContributionsDisabled) contributionDelivery.start(store)
+if (contributionDelivery && store && runtimeConfig.registryContributionEnabled && !stagingPolicy.registryContributionsDisabled) contributionDelivery.start(store)
 
 app.get('/api/health', (_request, response) => {
   const health = applicationHealth({

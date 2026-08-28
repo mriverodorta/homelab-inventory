@@ -41,6 +41,7 @@ afterEach(async () => {
 
 function repository() {
   let projection = null
+  let renewedAtMs = null
   return {
     getInstallationProjection: () => projection,
     saveInstallationProjection: (value) => {
@@ -52,6 +53,8 @@ function repository() {
       projection = { ...projection, accountClaimed: status.claimed, githubUsername: status.githubUsername, accountClaimedAtMs: status.accountClaimedAtMs, accountBindingRevision: status.accountBindingRevision ?? projection.accountBindingRevision }
       return projection
     },
+    recordCredentialRenewed: (atMs) => { renewedAtMs = atMs },
+    getRenewedAtMs: () => renewedAtMs,
   }
 }
 
@@ -86,7 +89,7 @@ async function setup(handler = null, { capabilityDocument = capabilities() } = {
     fetchImpl,
     now: () => new Date('2026-08-22T12:00:00.000Z'),
   })
-  return { dataDir, repo, service, requests }
+  return { dataDir, repo, service, requests, fetchImpl }
 }
 
 describe('sharing installation identity', () => {
@@ -98,15 +101,22 @@ describe('sharing installation identity', () => {
     expect(normalizeSharingCredentials({ ...base, scopes: [...LEGACY_SHARING_TOKEN_SCOPES, 'unknown:scope'] }, base.clientInstanceId)).toBeNull()
   })
 
-  it('creates one stable protected identity and rebuilds its SQLite projection', async () => {
-    const { dataDir, repo, service } = await setup()
+  it('keeps the production installation UUID and Ed25519 key stable across a persistent-data restart', async () => {
+    const { dataDir, repo, service, fetchImpl } = await setup()
     const first = await service.ensure()
     const instanceBody = await readFile(join(dataDir, 'sharing', 'installation-instance.json'), 'utf8')
     const keyBody = await readFile(join(dataDir, 'sharing', 'installation-ed25519.pem'), 'utf8')
     expect((await stat(join(dataDir, 'sharing', 'installation-instance.json'))).mode & 0o777).toBe(0o600)
     expect((await stat(join(dataDir, 'sharing', 'installation-ed25519.pem'))).mode & 0o777).toBe(0o600)
     repo.deleteInstallationProjection()
-    const rebuilt = await service.ensure()
+    const restartedService = new SharingInstallationIdentityService({
+      dataDir,
+      repository: repo,
+      labGdOrigin: 'https://lab.example.test',
+      fetchImpl,
+      now: () => new Date('2026-08-22T12:00:00.000Z'),
+    })
+    const rebuilt = await restartedService.ensure()
     expect(rebuilt.instance.clientInstanceId).toBe(first.instance.clientInstanceId)
     expect(rebuilt.keys.keyId).toBe(first.keys.keyId)
     expect(await readFile(join(dataDir, 'sharing', 'installation-instance.json'), 'utf8')).toBe(instanceBody)
@@ -123,6 +133,7 @@ describe('sharing installation identity', () => {
     expect(Object.keys(activation.body).sort()).toEqual(['challenge', 'clientInstanceId', 'publicKeySpki', 'signature'])
     expect(JSON.stringify([challenge.body, activation.body])).not.toMatch(/hostname|inventory|project|telemetry|registry|agent|tag|custom/iu)
     expect(repo.getInstallationProjection()).toMatchObject({ state: 'active', remoteInstallationId: 7 })
+    expect(repo.getRenewedAtMs()).toBe(Date.parse('2026-08-22T12:00:00.000Z'))
     expect((await stat(join(dataDir, 'sharing', 'installation-credentials.json'))).mode & 0o777).toBe(0o600)
     await service.activate()
     expect(requests.filter(({ url }) => url.pathname.endsWith('/challenge'))).toHaveLength(1)
@@ -195,6 +206,8 @@ describe('sharing installation identity', () => {
       throw new Error(`Unexpected request ${request.url.pathname}`)
     })
     const before = await service.ensure()
+    const instanceBefore = await readFile(join(dataDir, 'sharing', 'installation-instance.json'), 'utf8')
+    const keyBefore = await readFile(join(dataDir, 'sharing', 'installation-ed25519.pem'), 'utf8')
     repo.saveInstallationProjection({ ...before.projection, remoteInstallationId: 7, credentialExpiresAtMs: Date.parse('2026-08-22T11:59:00.000Z'), state: 'active' })
     await service.writeCredentials({
       version: 1,
@@ -216,6 +229,35 @@ describe('sharing installation identity', () => {
     })
     expect(repo.getInstallationProjection()).toMatchObject({ remoteInstallationId: 7, state: 'active' })
     expect(JSON.parse(await readFile(join(dataDir, 'sharing', 'installation-credentials.json'), 'utf8')).token).toBe('t'.repeat(32))
+    expect(await readFile(join(dataDir, 'sharing', 'installation-instance.json'), 'utf8')).toBe(instanceBefore)
+    expect(await readFile(join(dataDir, 'sharing', 'installation-ed25519.pem'), 'utf8')).toBe(keyBefore)
+    expect(repo.getRenewedAtMs()).toBe(Date.parse('2026-08-22T12:00:00.000Z'))
+  })
+
+  it('does not regenerate identity after a permanent authentication failure', async () => {
+    const { dataDir, service, repo, requests } = await setup((request) => {
+      if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (request.url.pathname.endsWith('/challenge')) return Response.json({ code: 'authentication-failed' }, { status: 401 })
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    })
+    const before = await service.ensure()
+    const instanceBefore = await readFile(join(dataDir, 'sharing', 'installation-instance.json'), 'utf8')
+    const keyBefore = await readFile(join(dataDir, 'sharing', 'installation-ed25519.pem'), 'utf8')
+    repo.saveInstallationProjection({ ...before.projection, remoteInstallationId: 7, credentialExpiresAtMs: Date.parse('2026-08-22T11:59:00.000Z'), state: 'active' })
+    await service.writeCredentials({
+      version: 1,
+      clientInstanceId: before.instance.clientInstanceId,
+      installationId: 7,
+      token: 'e'.repeat(32),
+      scopes: [...SHARING_TOKEN_SCOPES],
+      tokenExpiresAt: '2026-08-22T11:59:00.000Z',
+    })
+
+    await expect(service.activate()).rejects.toMatchObject({ code: 'authentication-failed' })
+    expect(requests.filter(({ url }) => url.pathname.endsWith('/challenge'))).toHaveLength(1)
+    expect(await readFile(join(dataDir, 'sharing', 'installation-instance.json'), 'utf8')).toBe(instanceBefore)
+    expect(await readFile(join(dataDir, 'sharing', 'installation-ed25519.pem'), 'utf8')).toBe(keyBefore)
+    expect(repo.getInstallationProjection()).toMatchObject({ remoteInstallationId: 7, state: 'active' })
   })
 
   it('challenge-activates once when proactive renewal loses an authentication race', async () => {

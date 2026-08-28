@@ -1,3 +1,5 @@
+import { createExternalAccessPolicy } from './external-access-policy.mjs'
+
 const TRUE_VALUES = new Set(['true', '1'])
 const FALSE_VALUES = new Set(['false', '0'])
 
@@ -39,10 +41,11 @@ export function readBooleanSetting(environment, name, fallback) {
 }
 
 export function readRuntimeConfig(environment = process.env) {
-  const appMode = configuredValue(environment, 'APP_MODE') ?? 'production'
-  if (!['production', 'demo', 'staging'].includes(appMode)) {
-    throw new Error('APP_MODE must be production, demo, or staging.')
+  const appMode = configuredValue(environment, 'APP_MODE') ?? (environment.NODE_ENV === 'test' ? 'test' : 'production')
+  if (!['production', 'demo', 'staging', 'test'].includes(appMode)) {
+    throw new Error('APP_MODE must be production, demo, staging, or test.')
   }
+  const externalAccess = createExternalAccessPolicy(appMode)
 
   return {
     appMode,
@@ -60,7 +63,15 @@ export function readRuntimeConfig(environment = process.env) {
       maximum: 60_000,
     }),
     seedEmptyData: readBooleanSetting(environment, 'SEED_EMPTY_DATA', environment.NODE_ENV !== 'production'),
-    updateCheckEnabled: appMode === 'staging'
+    externalAccess,
+    labGdEnabled: externalAccess.labGdAllowed
+      && readBooleanSetting(environment, 'LABGD_ENABLED', true),
+    registryIdentityEnabled: externalAccess.registryIdentityAllowed
+      && readBooleanSetting(environment, 'REGISTRY_IDENTITY_ENABLED', true),
+    registryContributionEnabled: externalAccess.registryContributionsAllowed
+      && readBooleanSetting(environment, 'REGISTRY_CONTRIBUTION_ENABLED', true),
+    registryNetworkRefreshEnabled: externalAccess.registryNetworkRefreshAllowed,
+    updateCheckEnabled: !externalAccess.updateChecksAllowed
       ? false
       : readBooleanSetting(environment, 'UPDATE_CHECK_ENABLED', true),
   }

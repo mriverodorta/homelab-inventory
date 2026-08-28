@@ -67,8 +67,11 @@ Sharing identity is independent from Registry enrollment:
 /data/sharing/public-id-key
 ```
 
-Private files use mode `0600`. Short-lived credentials can be renewed, while
-the UUID and private key remain stable across restart. Failed key rotation keeps
+Private files use mode `0600`. Short-lived credentials renew proactively before
+expiration, independently of browser requests and event callbacks. The event
+stream reconnects after network failures, LabGD restarts, credential renewal,
+and Homelab Inventory restarts while the UUID, remote installation, and private
+key remain stable. Failed key rotation keeps
 the old key and credentials. Recovery-pending state retains exactly one
 replacement key, stops publication, and waits for owner approval without a
 retry loop.
@@ -92,9 +95,11 @@ toggle is a later opt-out that retains the stable local identity for reconnect.
 `LABGD_ORIGIN` is intended for development or an explicitly trusted compatible
 service.
 
-Demo and staging modes always disable identity creation, enrollment, recovery,
-rotation, publication, and remote events regardless of environment or persisted
-settings. lab.gd failures never block Homelab Inventory health or readiness.
+Demo, staging, and test modes always disable identity creation, enrollment,
+recovery, rotation, publication, and remote events regardless of environment or
+persisted settings. They also disable Registry identity, contributions, network
+refresh, and update checks. lab.gd failures never block Homelab Inventory health
+or readiness.
 
 Optional behavior is exposed only after Homelab Inventory validates lab.gd's
 public capability contract. Password-protected shares, remote lifecycle
@@ -135,6 +140,12 @@ sharing projection and its cursor is advanced in the same SQLite transaction,
 so reconnect replay cannot duplicate state. There is no polling fallback.
 Unknown event versions stop event application and trigger capability
 renegotiation before the stream can resume.
+
+Connection timestamps, bounded error codes, reconnect attempts, and the next
+retry time are persisted without tokens, signatures, nonces, private keys, or
+request payloads. The UI reports a retrying state after credentials expire when
+there is no live or recently authenticated stream. Reconnect uses bounded
+exponential backoff with jitter and never generates a replacement identity.
 
 Remote settings changes, unpublish, delete, and republish use the current remote
 revision and a stable idempotency key. A remote success commits before the local

@@ -14,6 +14,18 @@ describe('runtime configuration', () => {
       demoMaxSessions: 100,
       saveDebounceMs: 500,
       seedEmptyData: true,
+      externalAccess: {
+        isolated: false,
+        labGdAllowed: true,
+        registryIdentityAllowed: true,
+        registryContributionsAllowed: true,
+        registryNetworkRefreshAllowed: true,
+        updateChecksAllowed: true,
+      },
+      labGdEnabled: true,
+      registryIdentityEnabled: true,
+      registryContributionEnabled: true,
+      registryNetworkRefreshEnabled: true,
       updateCheckEnabled: true,
     })
   })
@@ -35,6 +47,11 @@ describe('runtime configuration', () => {
       demoMaxSessions: 250,
       saveDebounceMs: 0,
       seedEmptyData: true,
+      externalAccess: expect.objectContaining({ isolated: true }),
+      labGdEnabled: false,
+      registryIdentityEnabled: false,
+      registryContributionEnabled: false,
+      registryNetworkRefreshEnabled: false,
       updateCheckEnabled: false,
     })
   })
@@ -44,6 +61,27 @@ describe('runtime configuration', () => {
       appMode: 'staging',
       updateCheckEnabled: false,
     })
+  })
+
+  it.each(['demo', 'staging', 'test'])('prevents %s mode from enabling any external integration', (appMode) => {
+    expect(readRuntimeConfig({
+      APP_MODE: appMode,
+      LABGD_ENABLED: 'true',
+      REGISTRY_IDENTITY_ENABLED: 'true',
+      REGISTRY_CONTRIBUTION_ENABLED: 'true',
+      UPDATE_CHECK_ENABLED: 'true',
+    })).toMatchObject({
+      appMode,
+      labGdEnabled: false,
+      registryIdentityEnabled: false,
+      registryContributionEnabled: false,
+      registryNetworkRefreshEnabled: false,
+      updateCheckEnabled: false,
+    })
+  })
+
+  it('selects isolated test mode when NODE_ENV is test and APP_MODE is absent', () => {
+    expect(readRuntimeConfig({ NODE_ENV: 'test' })).toMatchObject({ appMode: 'test', labGdEnabled: false })
   })
 
   it.each([

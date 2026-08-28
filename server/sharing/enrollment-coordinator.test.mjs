@@ -17,6 +17,20 @@ function repository(initial = {}) {
   }
 }
 
+async function eventually(assertion) {
+  let lastError
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      assertion()
+      return
+    } catch (error) {
+      lastError = error
+      await Promise.resolve()
+    }
+  }
+  throw lastError
+}
+
 describe('sharing enrollment coordinator', () => {
   it('waits for local readiness and never blocks the caller', async () => {
     let resolveReady
@@ -38,7 +52,7 @@ describe('sharing enrollment coordinator', () => {
     await Promise.resolve()
     expect(timers).toHaveLength(1)
     await timers.shift()()
-    await vi.waitFor(() => expect(repo.getSettings().enrollmentState).toBe('connected'))
+    await eventually(() => expect(repo.getSettings().enrollmentState).toBe('connected'))
     expect(activate).toHaveBeenCalledTimes(1)
     expect(reconcileAccountStatus).toHaveBeenCalledTimes(1)
   })
@@ -52,9 +66,9 @@ describe('sharing enrollment coordinator', () => {
       setTimer: (callback, delay) => { callbacks.push({ callback, delay }); return callback }, clearTimer: () => {},
     })
     coordinator.start()
-    await vi.waitFor(() => expect(callbacks).toHaveLength(1))
+    await eventually(() => expect(callbacks).toHaveLength(1))
     await callbacks.shift().callback()
-    await vi.waitFor(() => expect(repo.getSettings()).toMatchObject({
+    await eventually(() => expect(repo.getSettings()).toMatchObject({
       enrollmentState: 'retrying', attemptCount: 1, nextAttemptAtMs: 31_000,
     }))
     expect(callbacks).toHaveLength(1)
@@ -73,9 +87,9 @@ describe('sharing enrollment coordinator', () => {
         setTimer: (callback) => { callbacks.push(callback); return callback }, clearTimer: () => {},
       })
       coordinator.start()
-      await vi.waitFor(() => expect(callbacks).toHaveLength(1))
+      await eventually(() => expect(callbacks).toHaveLength(1))
       await callbacks.shift()()
-      await vi.waitFor(() => expect(repo.getSettings().enrollmentState).toBe(expected))
+      await eventually(() => expect(repo.getSettings().enrollmentState).toBe(expected))
       expect(callbacks).toHaveLength(0)
     }
   })
@@ -85,7 +99,17 @@ describe('sharing enrollment coordinator', () => {
     const activate = vi.fn()
     const coordinator = new SharingEnrollmentCoordinator({ repository: repo, identityService: { activate }, effectiveEnabled: false })
     coordinator.start()
-    await vi.waitFor(() => expect(repo.getSettings().enrollmentState).toBe('disabled'))
+    await eventually(() => expect(repo.getSettings().enrollmentState).toBe('disabled'))
     expect(activate).not.toHaveBeenCalled()
+  })
+
+  it.each(['demo', 'test'])('never enrolls or renews in %s mode', async () => {
+    const repo = repository()
+    const identityService = { activate: vi.fn(), renewCredentials: vi.fn() }
+    const coordinator = new SharingEnrollmentCoordinator({ repository: repo, identityService, effectiveEnabled: false })
+    coordinator.start()
+    await eventually(() => expect(repo.getSettings().enrollmentState).toBe('disabled'))
+    expect(identityService.activate).not.toHaveBeenCalled()
+    expect(identityService.renewCredentials).not.toHaveBeenCalled()
   })
 })

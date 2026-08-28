@@ -6,6 +6,7 @@ export const DEFAULT_REMOTE_HOST = 'bolt'
 export const DEFAULT_REMOTE_STACK_DIR = '/data/stack/homelab-inventory'
 export const DEFAULT_REMOTE_DATA_DIR = `${DEFAULT_REMOTE_STACK_DIR}/data`
 export const STAGING_CONTAINER = 'homelab-inventory-staging'
+export const STAGING_NETWORK = 'homelab-inventory-staging-isolated'
 export const STAGING_PORT = 8799
 
 export function releasePaths(environment = process.env) {

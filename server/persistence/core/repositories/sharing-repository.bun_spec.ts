@@ -43,6 +43,12 @@ describe('sharing repository', () => {
         connectionEnabled: true,
         enrollmentState: 'pending',
         attemptCount: 0,
+        lastConnectedAtMs: null,
+        lastDisconnectedAtMs: null,
+        lastRenewedAtMs: null,
+        eventLastErrorCode: null,
+        reconnectAttempt: 0,
+        nextReconnectAtMs: null,
       })
       expect(repository.setConnectionEnabled(1, false)).toMatchObject({
         revision: 2,
@@ -61,6 +67,23 @@ describe('sharing repository', () => {
         nextAttemptAtMs: Date.parse('2026-08-22T12:01:00.000Z'),
         lastErrorCode: 'labgd-unavailable',
       })).toMatchObject({ enrollmentState: 'retrying', attemptCount: 1 })
+      const revisionBeforeConnectionUpdate = repository.getSettings().revision
+      expect(repository.updateEventConnection({
+        lastConnectedAtMs: Date.parse('2026-08-22T12:00:10.000Z'),
+        lastDisconnectedAtMs: Date.parse('2026-08-22T12:00:20.000Z'),
+        lastRenewedAtMs: Date.parse('2026-08-22T12:00:05.000Z'),
+        lastErrorCode: 'sharing-events-failed',
+        reconnectAttempt: 2,
+        nextReconnectAtMs: Date.parse('2026-08-22T12:00:30.000Z'),
+      })).toMatchObject({
+        lastConnectedAtMs: Date.parse('2026-08-22T12:00:10.000Z'),
+        lastDisconnectedAtMs: Date.parse('2026-08-22T12:00:20.000Z'),
+        lastRenewedAtMs: Date.parse('2026-08-22T12:00:05.000Z'),
+        eventLastErrorCode: 'sharing-events-failed',
+        reconnectAttempt: 2,
+        nextReconnectAtMs: Date.parse('2026-08-22T12:00:30.000Z'),
+        revision: revisionBeforeConnectionUpdate,
+      })
     } finally {
       closeManagedDatabase(handle)
     }

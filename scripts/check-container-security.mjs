@@ -1,7 +1,15 @@
 #!/usr/bin/env bun
 
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { refreshTrivyDatabase, trivyCommand } from './container-security/trivy.mjs'
-import { smokeRunCommand } from './container-security/smoke-runtime.mjs'
+import {
+  demoSmokeRunCommand,
+  smokeHealthCommand,
+  smokeIdentityAuditCommand,
+  smokeRunCommand,
+} from './container-security/smoke-runtime.mjs'
 import { releasePaths } from './local-release/config.mjs'
 import { ensureAgentArtifact, materializeAgentArtifact } from './release-artifacts/agent-store.mjs'
 import { ensureWasmArtifact, materializeWasmArtifact } from './release-artifacts/store.mjs'
@@ -39,16 +47,11 @@ async function commandAvailable(command) {
   return (await process.exited) === 0
 }
 
-async function waitForHealth(containerName) {
-  const portOutput = await run(['docker', 'port', containerName, '8798/tcp'], { capture: true })
-  const published = portOutput.split('\n')[0]?.trim()
-  const port = published?.match(/:(\d+)$/)?.[1]
-  if (!port) throw new Error(`Could not determine the health-check port for ${containerName}.`)
-
+async function waitForHealth(containerName, expectedMode = 'staging') {
   for (let attempt = 0; attempt < 30; attempt += 1) {
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/api/health`)
-      if (response.ok) return
+      await run(smokeHealthCommand(containerName, expectedMode), { capture: true })
+      return
     } catch {
       // The container may still be starting.
     }
@@ -59,15 +62,19 @@ async function waitForHealth(containerName) {
   throw new Error(`${containerName} did not become healthy within 30 seconds.`)
 }
 
-async function smokeTest(image, platform) {
-  const containerName = `homelab-inventory-security-${platform.replaceAll('/', '-')}-${Date.now()}`
+async function smokeTest(image, platform, { appMode = 'staging', demoSourceDir = null } = {}) {
+  const containerName = `homelab-inventory-security-${appMode}-${platform.replaceAll('/', '-')}-${Date.now()}`
   try {
-    await run(smokeRunCommand({ containerName, platform, image }))
-    await waitForHealth(containerName)
+    const command = appMode === 'demo'
+      ? demoSmokeRunCommand({ containerName, platform, image, sourceDir: demoSourceDir })
+      : smokeRunCommand({ containerName, platform, image })
+    await run(command)
+    await waitForHealth(containerName, appMode)
     await run([
       'docker', 'exec', containerName,
       'bun', 'scripts/verify-sqlite-runtime.mjs',
     ])
+    await run(smokeIdentityAuditCommand(containerName))
   } finally {
     const cleanup = Bun.spawn(['docker', 'rm', '--force', containerName], {
       cwd: ROOT,
@@ -76,6 +83,17 @@ async function smokeTest(image, platform) {
     })
     await cleanup.exited
   }
+}
+
+async function createDemoSource() {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'homelab-inventory-security-demo-'))
+  await fs.mkdir(path.join(directory, 'stores'))
+  await Promise.all([
+    fs.copyFile(path.join(ROOT, 'server/seed/meta.json'), path.join(directory, 'meta.json')),
+    fs.copyFile(path.join(ROOT, 'server/seed/inventory.json'), path.join(directory, 'stores/inventory.json')),
+    fs.copyFile(path.join(ROOT, 'server/seed/project.json'), path.join(directory, 'stores/project.json')),
+  ])
+  return directory
 }
 
 async function scanWithScout(image) {
@@ -128,6 +146,7 @@ async function main() {
   const agentPin = JSON.parse(await Bun.file(new URL('../server/agent-release-pin.json', import.meta.url)).text())
   const revision = await run(['git', 'rev-parse', 'HEAD'], { capture: true })
   const builtImages = []
+  const demoSourceDir = await createDemoSource()
 
   try {
     await run([
@@ -149,9 +168,11 @@ async function main() {
         '.',
       ])
       await smokeTest(image, platform)
+      await smokeTest(image, platform, { appMode: 'demo', demoSourceDir })
       await Promise.all([scanWithScout(image), scanWithTrivy(image)])
     }
   } finally {
+    await fs.rm(demoSourceDir, { recursive: true, force: true })
     if (Bun.env.SECURITY_KEEP_IMAGES !== '1') {
       for (const image of builtImages) {
         const cleanup = Bun.spawn(['docker', 'image', 'rm', '--force', image], {

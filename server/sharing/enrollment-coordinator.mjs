@@ -3,13 +3,6 @@ import { SharingRecoveryPendingError, SharingUnsupportedError } from './installa
 const BASE_DELAY_MS = 30_000
 const MAX_DELAY_MS = 60 * 60_000
 
-export function sharingEnvironmentEnabled(value = process.env.LABGD_ENABLED) {
-  if (value == null || value === '') return true
-  if (value === 'true') return true
-  if (value === 'false') return false
-  throw new Error('LABGD_ENABLED must be true or false when set.')
-}
-
 export class SharingEnrollmentCoordinator {
   constructor({
     repository,

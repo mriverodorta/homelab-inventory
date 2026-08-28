@@ -1,19 +1,16 @@
 import { run } from './process.mjs'
 import { ensureTrivyDatabase, trivyCommand, TRIVY_IMAGE } from '../container-security/trivy.mjs'
-import { smokeRunCommand } from '../container-security/smoke-runtime.mjs'
+import { smokeHealthCommand, smokeIdentityAuditCommand, smokeRunCommand } from '../container-security/smoke-runtime.mjs'
 import { performance } from 'node:perf_hooks'
 
 export { TRIVY_IMAGE }
 export const SECURITY_SEVERITIES = 'critical,high,medium,low,unspecified'
 
 export async function waitForContainerHealth(containerName) {
-  const { stdout } = await run(['docker', 'port', containerName, '8798/tcp'], { capture: true, log: false })
-  const port = stdout.split('\n')[0]?.match(/:(\d+)$/)?.[1]
-  if (!port) throw new Error(`Could not determine the health port for ${containerName}.`)
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/api/health`)
-      if (response.ok) return Number(port)
+      await run(smokeHealthCommand(containerName), { capture: true, log: false })
+      return
     } catch {}
     await Bun.sleep(1_000)
   }
@@ -27,6 +24,7 @@ export async function smokeTestImage(image, platform) {
     await run(smokeRunCommand({ containerName, platform, image }))
     await waitForContainerHealth(containerName)
     await run(['docker', 'exec', containerName, 'bun', 'scripts/verify-sqlite-runtime.mjs'])
+    await run(smokeIdentityAuditCommand(containerName))
   } finally {
     await run(['docker', 'rm', '--force', containerName], { allowFailure: true, log: false })
   }

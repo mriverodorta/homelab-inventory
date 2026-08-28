@@ -5,6 +5,7 @@ describe('staging runtime policy', () => {
   it('disables every external integration without enabling demo sessions', () => {
     expect(createStagingPolicy('staging')).toEqual({
       staging: true,
+      isolated: true,
       authenticationDisabled: true,
       agentsDisabled: true,
       notificationsDisabled: true,
@@ -14,6 +15,18 @@ describe('staging runtime policy', () => {
       registryNetworkRefreshDisabled: true,
       updateChecksDisabled: true,
       scheduledBackupsDisabled: true,
+    })
+  })
+
+  it.each(['demo', 'test'])('isolates %s even when staging-specific UI is disabled', (appMode) => {
+    expect(createStagingPolicy(appMode)).toMatchObject({
+      staging: false,
+      isolated: true,
+      sharingDisabled: true,
+      registryIdentityDisabled: true,
+      registryContributionsDisabled: true,
+      registryNetworkRefreshDisabled: true,
+      updateChecksDisabled: true,
     })
   })
 

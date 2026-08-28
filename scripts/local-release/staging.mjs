@@ -1,16 +1,15 @@
 import { createHash } from 'node:crypto'
-import { STAGING_CONTAINER, STAGING_PORT } from './config.mjs'
+import { STAGING_CONTAINER, STAGING_NETWORK, STAGING_PORT } from './config.mjs'
 import { run } from './process.mjs'
 import { validateStagingData } from './sanitize.mjs'
+import { ISOLATED_RUNTIME_ENVIRONMENT } from '../../server/external-access-policy.mjs'
 
 const STAGING_ENVIRONMENT = Object.freeze({
-  APP_MODE: 'staging',
+  ...ISOLATED_RUNTIME_ENVIRONMENT,
   NODE_ENV: 'production',
   PORT: '8798',
   DATA_DIR: '/data',
   SEED_EMPTY_DATA: 'false',
-  UPDATE_CHECK_ENABLED: 'false',
-  REGISTRY_REFRESH_INTERVAL_MS: '0',
 })
 
 export function stagingRunCommand(candidate, paths) {
@@ -18,6 +17,7 @@ export function stagingRunCommand(candidate, paths) {
     'docker', 'run', '--detach', '--name', STAGING_CONTAINER,
     '--platform', candidate.platform,
     '--restart', 'no',
+    '--network', STAGING_NETWORK,
     '--publish', `127.0.0.1:${STAGING_PORT}:8798`,
     '--mount', `type=bind,source=${paths.currentDataDir},target=/data`,
   ]
@@ -42,10 +42,12 @@ async function waitForStagingHealth({ timeoutMs = 120_000 } = {}) {
 
 export async function stopStaging() {
   await run(['docker', 'rm', '--force', STAGING_CONTAINER], { allowFailure: true, log: false })
+  await run(['docker', 'network', 'rm', STAGING_NETWORK], { allowFailure: true, log: false })
 }
 
 export async function deployStaging(candidate, paths) {
   await stopStaging()
+  await run(['docker', 'network', 'create', '--driver', 'bridge', '--internal', STAGING_NETWORK])
   await run(stagingRunCommand(candidate, paths))
   return await waitForStagingHealth()
 }
@@ -121,6 +123,11 @@ export async function checkStaging(candidate, paths) {
     throw new Error('Staging is not bound exclusively to 127.0.0.1:8799.')
   }
   if (!inspectMount(inspect, paths)) throw new Error('Staging is not using the current sanitized data snapshot.')
+  const { stdout: networkOutput } = await run(['docker', 'network', 'inspect', STAGING_NETWORK], { capture: true, log: false })
+  const network = JSON.parse(networkOutput)[0]
+  if (network?.Internal !== true || !inspect.NetworkSettings?.Networks?.[STAGING_NETWORK]) {
+    throw new Error('Staging is not attached to its outbound-isolated Docker network.')
+  }
   const environment = Object.fromEntries((inspect.Config?.Env ?? []).map((entry) => entry.split(/=(.*)/s).slice(0, 2)))
   for (const [name, expected] of Object.entries(STAGING_ENVIRONMENT)) {
     if (environment[name] !== expected) throw new Error(`Staging environment ${name} is not isolated.`)

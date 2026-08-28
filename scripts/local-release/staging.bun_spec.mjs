@@ -15,9 +15,13 @@ describe('local release staging', () => {
     expect(command).toContain(candidate.image)
     expect(command).toContain('127.0.0.1:8799:8798')
     expect(command).toContain('type=bind,source=/private/staging data/current,target=/data')
+    expect(command).toContain('homelab-inventory-staging-isolated')
     expect(command).toContain('APP_MODE=staging')
     expect(command).toContain('UPDATE_CHECK_ENABLED=false')
     expect(command).toContain('REGISTRY_REFRESH_INTERVAL_MS=0')
+    expect(command).toContain('LABGD_ENABLED=false')
+    expect(command).toContain('REGISTRY_IDENTITY_ENABLED=false')
+    expect(command).toContain('REGISTRY_CONTRIBUTION_ENABLED=false')
     expect(command).not.toContain('--privileged')
   })
 

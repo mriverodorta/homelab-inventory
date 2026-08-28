@@ -136,6 +136,34 @@ describe('sharing routes', () => {
     expect(reconcileAccountStatus).toHaveBeenCalledOnce()
   })
 
+  it('projects expired disconnected credentials as retrying instead of indefinitely connected', async () => {
+    const status = {
+      live: false,
+      recentlyAuthenticated: false,
+      credentialValid: false,
+      effectiveEnrollmentState: 'retrying',
+      lastConnectedAtMs: 1,
+      lastDisconnectedAtMs: 2,
+      lastRenewedAtMs: 3,
+      lastErrorCode: 'network-error',
+      reconnectAttempt: 4,
+      nextReconnectAtMs: 5,
+    }
+    const baseUrl = await server({
+      repository: {
+        getSettings: () => ({ revision: 1, connectionEnabled: true, enrollmentState: 'connected' }),
+        getInstallationProjection: () => ({ credentialExpiresAtMs: 1 }),
+      },
+      publicationService: {},
+      identityService: {},
+      eventCoordinator: { status: () => status },
+      effectiveEnabled: true,
+    })
+    expect(await fetch(`${baseUrl}/api/sharing/settings`).then((response) => response.json())).toMatchObject({
+      settings: { enrollmentState: 'retrying', connection: status },
+    })
+  })
+
   it('unlinks the account through the durable orchestration service', async () => {
     const execute = vi.fn(async () => ({
       result: {

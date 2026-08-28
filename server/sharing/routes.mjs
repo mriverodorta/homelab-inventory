@@ -30,7 +30,7 @@ function disabledError({ demo, staging, effectiveEnabled }) {
   return null
 }
 
-function publicSettings(repository, flags, capabilities) {
+function publicSettings(repository, flags, capabilities, eventCoordinator = null) {
   const persisted = repository?.getSettings() ?? {
     revision: 0,
     connectionEnabled: false,
@@ -44,6 +44,7 @@ function publicSettings(repository, flags, capabilities) {
     ? persisted
     : { ...persisted, enrollmentState: 'disabled', nextAttemptAtMs: null }
   const projection = repository?.getInstallationProjection?.() ?? null
+  const connection = eventCoordinator?.status?.() ?? null
   return {
     available: flags.effectiveEnabled,
     automaticEnrollment: flags.effectiveEnabled,
@@ -53,6 +54,7 @@ function publicSettings(repository, flags, capabilities) {
     capabilities,
     settings: {
       ...settings,
+      ...(connection ? { enrollmentState: connection.effectiveEnrollmentState, connection } : {}),
       account: {
         claimed: projection?.accountClaimed ?? false,
         githubUsername: projection?.githubUsername ?? null,
@@ -93,7 +95,7 @@ export function registerSharingRoutes(app, {
   }
 
   app.get('/api/sharing/settings', (_request, response) => {
-    response.set('Cache-Control', 'no-store').json(publicSettings(repository, flags, currentCapabilities()))
+    response.set('Cache-Control', 'no-store').json(publicSettings(repository, flags, currentCapabilities(), eventCoordinator))
   })
 
   app.get('/api/sharing/capabilities', (_request, response) => {
@@ -106,7 +108,7 @@ export function registerSharingRoutes(app, {
     const updated = repository.setConnectionEnabled(positiveId(request.body.expectedRevision, 'Expected revision'), request.body.connectionEnabled)
     enrollmentCoordinator?.wake()
     eventCoordinator?.wake()
-    response.json(publicSettings(repository, flags, currentCapabilities()))
+    response.json(publicSettings(repository, flags, currentCapabilities(), eventCoordinator))
     return updated
   }))
 
@@ -203,7 +205,7 @@ export function registerSharingRoutes(app, {
   app.post('/api/sharing/account/reconcile', (_request, response) => handle(response, async () => {
     requireRuntime()
     await identityService.reconcileAccountStatus()
-    response.json(publicSettings(repository,flags,currentCapabilities()))
+    response.json(publicSettings(repository, flags, currentCapabilities(), eventCoordinator))
   }))
 
   app.post('/api/sharing/account/unlink', (request, response) => handle(response, async () => {
@@ -217,7 +219,7 @@ export function registerSharingRoutes(app, {
       confirmation: request.body?.confirmation ?? null,
       actorUserId: request.authentication?.account?.id ?? null,
     })
-    response.json({ ...publicSettings(repository, flags, currentCapabilities()), unlink: completed })
+    response.json({ ...publicSettings(repository, flags, currentCapabilities(), eventCoordinator), unlink: completed })
   }))
 
   app.post('/api/sharing/recovery/resume', (_request, response) => handle(response, async () => {

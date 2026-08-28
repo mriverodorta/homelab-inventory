@@ -38,6 +38,18 @@ export type SharingSettingsResponse = Readonly<{
     nextAttemptAtMs: number | null
     lastErrorCode: string | null
     recoveryState: 'pending-owner-approval' | 'approved' | null
+    connection?: {
+      live: boolean
+      recentlyAuthenticated: boolean
+      credentialValid: boolean
+      effectiveEnrollmentState: SharingEnrollmentState
+      lastConnectedAtMs: number | null
+      lastDisconnectedAtMs: number | null
+      lastRenewedAtMs: number | null
+      lastErrorCode: string | null
+      reconnectAttempt: number
+      nextReconnectAtMs: number | null
+    }
     account: { claimed: boolean; githubUsername: string | null; claimedAtMs: number | null; bindingRevision: number }
   }
 }>

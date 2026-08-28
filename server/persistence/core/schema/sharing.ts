@@ -14,6 +14,12 @@ export const sharingSettings = sqliteTable('sharing_settings', {
   lastErrorCode: text('last_error_code'),
   remoteEventCursor: integer('remote_event_cursor').notNull().default(0),
   recoveryState: text('recovery_state'),
+  lastConnectedAtMs: integer('last_connected_at_ms'),
+  lastDisconnectedAtMs: integer('last_disconnected_at_ms'),
+  lastRenewedAtMs: integer('last_renewed_at_ms'),
+  eventLastErrorCode: text('event_last_error_code'),
+  reconnectAttempt: integer('reconnect_attempt').notNull().default(0),
+  nextReconnectAtMs: integer('next_reconnect_at_ms'),
   createdAtMs: integer('created_at_ms').notNull(),
   updatedAtMs: integer('updated_at_ms').notNull(),
 }, (table) => [
@@ -23,6 +29,7 @@ export const sharingSettings = sqliteTable('sharing_settings', {
   check('sharing_settings_attempt_check', sql`${table.attemptCount} >= 0`),
   check('sharing_settings_cursor_check', sql`${table.remoteEventCursor} >= 0`),
   check('sharing_settings_recovery_check', sql`${table.recoveryState} IS NULL OR ${table.recoveryState} IN ('pending-owner-approval','approved')`),
+  check('sharing_settings_reconnect_attempt_check', sql`${table.reconnectAttempt} >= 0`),
 ])
 
 export const sharingInstallationProjection = sqliteTable('sharing_installation_projection', {

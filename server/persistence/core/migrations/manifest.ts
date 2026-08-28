@@ -165,4 +165,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0031_workspace_owned_topology.sql',
     sha256: '115e4a87c5992b1d8cc4f1c8f2ad657d1868a62e4ffa015053d18b9f28dd5f80',
   },
+  {
+    id: '0033_sharing_connection_lifecycle',
+    file: '0032_sharing_connection_lifecycle.sql',
+    sha256: 'b91c5e2911cdd744560ec7d217ef947ed68eaaec59467c53987568d748c272bf',
+  },
 ]

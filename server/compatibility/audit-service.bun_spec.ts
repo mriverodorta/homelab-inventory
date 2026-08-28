@@ -270,7 +270,7 @@ describe('canonical compatibility audit service', () => {
     `).get()).toEqual({ engine_version: 'canonical-v2.cpu-alias-2' })
     expect(preservedState()).toBe(before)
 
-    expect(await reapplyMigrations()).toEqual({ applied: 0, currentVersion: 32 })
+    expect(await reapplyMigrations()).toEqual({ applied: 0, currentVersion: 33 })
     service.markHostDirty(store, {
       projectId: 1,
       hostItemId,

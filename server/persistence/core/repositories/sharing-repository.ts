@@ -17,6 +17,12 @@ export type SharingSettings = Readonly<{
   lastErrorCode: string | null
   remoteEventCursor: number
   recoveryState: 'pending-owner-approval' | 'approved' | null
+  lastConnectedAtMs: number | null
+  lastDisconnectedAtMs: number | null
+  lastRenewedAtMs: number | null
+  eventLastErrorCode: string | null
+  reconnectAttempt: number
+  nextReconnectAtMs: number | null
   createdAtMs: number
   updatedAtMs: number
 }>
@@ -131,6 +137,12 @@ const settingColumns = `
   enrollment_state AS enrollmentState, attempt_count AS attemptCount,
   next_attempt_at_ms AS nextAttemptAtMs, last_error_code AS lastErrorCode,
   remote_event_cursor AS remoteEventCursor, recovery_state AS recoveryState,
+  last_connected_at_ms AS lastConnectedAtMs,
+  last_disconnected_at_ms AS lastDisconnectedAtMs,
+  last_renewed_at_ms AS lastRenewedAtMs,
+  event_last_error_code AS eventLastErrorCode,
+  reconnect_attempt AS reconnectAttempt,
+  next_reconnect_at_ms AS nextReconnectAtMs,
   created_at_ms AS createdAtMs, updated_at_ms AS updatedAtMs
 `
 
@@ -216,6 +228,47 @@ export function createSharingRepository(context: RepositoryContext) {
       now(),
     )
     return getSettings()
+  }
+
+  function updateEventConnection(patch: Readonly<{
+    lastConnectedAtMs?: number | null
+    lastDisconnectedAtMs?: number | null
+    lastRenewedAtMs?: number | null
+    lastErrorCode?: string | null
+    reconnectAttempt?: number
+    nextReconnectAtMs?: number | null
+  }>) {
+    const current = getSettings()
+    const reconnectAttempt = patch.reconnectAttempt ?? current.reconnectAttempt
+    if (!Number.isSafeInteger(reconnectAttempt) || reconnectAttempt < 0) throw new Error('Sharing reconnect attempt must be a non-negative safe integer.')
+    const errorCode = patch.lastErrorCode === undefined ? current.eventLastErrorCode : patch.lastErrorCode
+    if (errorCode !== null && !/^[a-z0-9-]{1,80}$/u.test(errorCode)) throw new Error('Sharing event error code is invalid.')
+    const timestamp = (value: number | null | undefined, fallback: number | null) => {
+      const next = value === undefined ? fallback : value
+      if (next !== null && (!Number.isSafeInteger(next) || next <= 0)) throw new Error('Sharing event timestamp is invalid.')
+      return next
+    }
+    sqlite.query(`
+      UPDATE sharing_settings
+      SET last_connected_at_ms = ?, last_disconnected_at_ms = ?,
+          last_renewed_at_ms = ?, event_last_error_code = ?,
+          reconnect_attempt = ?, next_reconnect_at_ms = ?,
+          updated_at_ms = ?
+      WHERE id = 1
+    `).run(
+      timestamp(patch.lastConnectedAtMs, current.lastConnectedAtMs),
+      timestamp(patch.lastDisconnectedAtMs, current.lastDisconnectedAtMs),
+      timestamp(patch.lastRenewedAtMs, current.lastRenewedAtMs),
+      errorCode,
+      reconnectAttempt,
+      timestamp(patch.nextReconnectAtMs, current.nextReconnectAtMs),
+      now(),
+    )
+    return getSettings()
+  }
+
+  function recordCredentialRenewed(atMs: number) {
+    return updateEventConnection({ lastRenewedAtMs: atMs })
   }
 
   function getInstallationProjection(): SharingInstallationProjection | null {
@@ -714,6 +767,8 @@ export function createSharingRepository(context: RepositoryContext) {
     getSettings,
     setConnectionEnabled,
     updateEnrollment,
+    updateEventConnection,
+    recordCredentialRenewed,
     getInstallationProjection,
     reconcileInstallationAccount,
     saveInstallationProjection,

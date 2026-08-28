@@ -5,6 +5,70 @@ function stream(frames) {
   return new Response(frames.join(''), { headers: { 'content-type': 'text/event-stream' } })
 }
 
+function lifecycleRepository(initial = {}) {
+  let settings = {
+    connectionEnabled: true,
+    enrollmentState: 'connected',
+    remoteEventCursor: 0,
+    lastConnectedAtMs: null,
+    lastDisconnectedAtMs: null,
+    lastRenewedAtMs: null,
+    eventLastErrorCode: null,
+    reconnectAttempt: 0,
+    nextReconnectAtMs: null,
+    ...initial,
+  }
+  let projection = { credentialExpiresAtMs: initial.credentialExpiresAtMs ?? null }
+  return {
+    getSettings: () => ({ ...settings }),
+    getInstallationProjection: () => ({ ...projection }),
+    updateEventConnection: vi.fn((patch) => {
+      const { lastErrorCode, ...rest } = patch
+      settings = { ...settings, ...rest, ...(lastErrorCode !== undefined ? { eventLastErrorCode: lastErrorCode } : {}) }
+      return { ...settings }
+    }),
+    setCredentialExpiresAtMs: (value) => { projection = { ...projection, credentialExpiresAtMs: value } },
+    applyRemoteEvent: vi.fn(() => ({ applied: false, shares: [] })),
+  }
+}
+
+function controlledStream() {
+  let cancelled = false
+  const response = new Response(new ReadableStream({
+    start() {},
+    cancel() { cancelled = true },
+  }), { headers: { 'content-type': 'text/event-stream' } })
+  return { response, cancelled: () => cancelled }
+}
+
+function timerHarness() {
+  const entries = []
+  return {
+    entries,
+    setTimer(callback, delay) {
+      const entry = { callback, delay, active: true }
+      entries.push(entry)
+      return entry
+    },
+    clearTimer(entry) { entry.active = false },
+    next(delay) { return entries.find((entry) => entry.active && (delay === undefined || entry.delay === delay)) },
+  }
+}
+
+async function eventually(assertion) {
+  let lastError
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      assertion()
+      return
+    } catch (error) {
+      lastError = error
+      await Promise.resolve()
+    }
+  }
+  throw lastError
+}
+
 describe('sharing installation event coordinator', () => {
   it('resumes from the persisted cursor and applies ordered events before scheduling reconnect', async () => {
     let cursor = 7
@@ -23,7 +87,9 @@ describe('sharing installation event coordinator', () => {
     await coordinator.connect()
     expect(client.events).toHaveBeenCalledWith(7)
     expect(applied).toEqual([8, 9])
-    expect(delays).toEqual([1000])
+    expect(delays).toHaveLength(1)
+    expect(delays[0]).toBeGreaterThanOrEqual(1000)
+    expect(delays[0]).toBeLessThanOrEqual(1200)
   })
 
   it('renegotiates instead of committing an unknown event version', async () => {
@@ -100,5 +166,101 @@ describe('sharing installation event coordinator', () => {
     const coordinator = new SharingInstallationEventCoordinator({ repository: {}, client: {}, identityService: {}, effectiveEnabled: false, setTimer })
     coordinator.start()
     expect(setTimer).not.toHaveBeenCalled()
+  })
+
+  it('executes proactive renewal and reconnects the SSE stream with one stable identity', async () => {
+    let currentTime = 1_000
+    const timers = timerHarness()
+    const first = controlledStream()
+    const second = controlledStream()
+    const stableIdentity = { clientInstanceId: 'stable-instance', installationId: 7, keyId: 'stable-key' }
+    const credentials = [
+      { ...stableIdentity, tokenExpiresAt: new Date(currentTime + 100_000).toISOString() },
+      { ...stableIdentity, tokenExpiresAt: new Date(currentTime + 200_000).toISOString() },
+    ]
+    const repository = lifecycleRepository({ credentialExpiresAtMs: currentTime + 100_000 })
+    const activate = vi.fn(async () => credentials[Math.min(activate.mock.calls.length - 1, 1)])
+    const client = { events: vi.fn(async () => client.events.mock.calls.length === 1 ? first.response : second.response) }
+    const coordinator = new SharingInstallationEventCoordinator({
+      repository,
+      client,
+      identityService: { activate, reconcileAccountStatus: vi.fn(), getCapabilities: () => ({ installationEvents: true }) },
+      now: () => currentTime,
+      random: () => 0,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+      logger: { warn: vi.fn() },
+    })
+    coordinator.stopped = false
+
+    const firstConnection = coordinator.connect()
+    await eventually(() => expect(client.events).toHaveBeenCalledTimes(1))
+    expect(timers.next(10_000)).toBeTruthy()
+    currentTime += 10_000
+    timers.next(10_000).callback()
+    await firstConnection
+    expect(first.cancelled()).toBe(true)
+    expect(timers.next(0)).toBeTruthy()
+    timers.next(0).callback()
+    await eventually(() => expect(client.events).toHaveBeenCalledTimes(2))
+    expect(activate).toHaveBeenCalledTimes(2)
+    expect(credentials.map(({ clientInstanceId, installationId, keyId }) => ({ clientInstanceId, installationId, keyId })))
+      .toEqual([stableIdentity, stableIdentity])
+    coordinator.stop()
+    expect(second.cancelled()).toBe(true)
+  })
+
+  it('persists bounded exponential reconnect state across consecutive failures and restart', async () => {
+    let currentTime = 10_000
+    const timers = timerHarness()
+    const repository = lifecycleRepository()
+    const client = { events: vi.fn(async () => { throw Object.assign(new Error('offline'), { code: 'network-error' }) }) }
+    const identityService = {
+      activate: vi.fn(async () => ({ tokenExpiresAt: new Date(currentTime + 600_000).toISOString() })),
+      reconcileAccountStatus: vi.fn(),
+      getCapabilities: () => ({ installationEvents: true }),
+    }
+    const coordinator = new SharingInstallationEventCoordinator({ repository, client, identityService, now: () => currentTime, random: () => 0, setTimer: timers.setTimer, clearTimer: timers.clearTimer, logger: { warn: vi.fn() } })
+    coordinator.stopped = false
+    await coordinator.connect()
+    expect(repository.getSettings()).toMatchObject({ reconnectAttempt: 1, nextReconnectAtMs: 11_000, eventLastErrorCode: 'network-error' })
+    currentTime = 11_000
+    timers.next(1_000).callback()
+    await eventually(() => expect(client.events).toHaveBeenCalledTimes(2))
+    await eventually(() => expect(repository.getSettings().reconnectAttempt).toBe(2))
+    expect(repository.getSettings().nextReconnectAtMs).toBe(13_000)
+
+    coordinator.stop()
+    currentTime = 12_000
+    const restartedTimers = timerHarness()
+    const restarted = new SharingInstallationEventCoordinator({ repository, client, identityService, now: () => currentTime, random: () => 0, setTimer: restartedTimers.setTimer, clearTimer: restartedTimers.clearTimer, logger: { warn: vi.fn() } })
+    restarted.start()
+    expect(restartedTimers.next(1_000)).toBeTruthy()
+    restarted.stop()
+  })
+
+  it('keeps one effective connection and marks expired stale credentials as retrying', async () => {
+    const now = 500_000
+    const pending = controlledStream()
+    const repository = lifecycleRepository({
+      credentialExpiresAtMs: now - 1,
+      lastConnectedAtMs: now - 300_000,
+    })
+    const client = { events: vi.fn(async () => pending.response) }
+    const identityService = {
+      activate: vi.fn(async () => ({ tokenExpiresAt: new Date(now + 600_000).toISOString() })),
+      reconcileAccountStatus: vi.fn(),
+      getCapabilities: () => ({ installationEvents: true }),
+    }
+    const coordinator = new SharingInstallationEventCoordinator({ repository, client, identityService, now: () => now, random: () => 0, logger: { warn: vi.fn() } })
+    expect(coordinator.status()).toMatchObject({ effectiveEnrollmentState: 'retrying', live: false, credentialValid: false })
+    coordinator.stopped = false
+    const one = coordinator.connect()
+    const two = coordinator.connect()
+    expect(one).toBe(two)
+    await eventually(() => expect(client.events).toHaveBeenCalledOnce())
+    expect(coordinator.status()).toMatchObject({ effectiveEnrollmentState: 'connected', live: true })
+    coordinator.stop()
+    await one
   })
 })

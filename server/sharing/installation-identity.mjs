@@ -297,6 +297,7 @@ export class SharingInstallationIdentityService {
       tokenExpiresAt,
     }
     await this.writeCredentials(credentials)
+    this.repository.recordCredentialRenewed?.(this.now().getTime())
     if (promoteRecovery) {
       await fs.rename(keyPath, this.privateKeyPath)
       await fs.chmod(this.privateKeyPath, 0o600)
@@ -344,6 +345,7 @@ export class SharingInstallationIdentityService {
       tokenExpiresAt,
     }
     await this.writeCredentials(credentials)
+    this.repository.recordCredentialRenewed?.(this.now().getTime())
     this.repository.saveInstallationProjection({
       clientInstanceId: current.instance.clientInstanceId,
       keyId: current.keys.keyId,
