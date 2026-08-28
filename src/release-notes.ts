@@ -679,10 +679,16 @@ const RELEASE_0_16_4_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_5_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Editable and shared Canvas views now use the same 10%–200% zoom range, making large layouts easier to review without changing saved viewport or fit-to-view behavior.',
   ],
+  fixes: [],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
   fixes: [],
   notes: [],
 }
@@ -1214,9 +1220,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.5',
+    date: '2026-08-28',
+    channel: 'latest',
+    title: 'More flexible Canvas zoom',
+    ...RELEASE_0_16_5_DETAILS,
+  },
+  {
     version: '0.16.4',
     date: '2026-08-27',
-    channel: 'latest',
+    channel: 'release',
     title: 'Isolated warm Canvas rendering',
     ...RELEASE_0_16_4_DETAILS,
   },
