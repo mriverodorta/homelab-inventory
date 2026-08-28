@@ -1,5 +1,6 @@
 import { run } from './process.mjs'
 import { ensureTrivyDatabase, trivyCommand, TRIVY_IMAGE } from '../container-security/trivy.mjs'
+import { smokeRunCommand } from '../container-security/smoke-runtime.mjs'
 import { performance } from 'node:perf_hooks'
 
 export { TRIVY_IMAGE }
@@ -23,7 +24,7 @@ export async function waitForContainerHealth(containerName) {
 export async function smokeTestImage(image, platform) {
   const containerName = `homelab-inventory-release-smoke-${platform.split('/')[1]}-${Date.now()}`
   try {
-    await run(['docker', 'run', '--detach', '--name', containerName, '--platform', platform, '--publish', '127.0.0.1::8798', image])
+    await run(smokeRunCommand({ containerName, platform, image }))
     await waitForContainerHealth(containerName)
     await run(['docker', 'exec', containerName, 'bun', 'scripts/verify-sqlite-runtime.mjs'])
   } finally {

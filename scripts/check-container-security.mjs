@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { refreshTrivyDatabase, trivyCommand } from './container-security/trivy.mjs'
+import { smokeRunCommand } from './container-security/smoke-runtime.mjs'
 import { releasePaths } from './local-release/config.mjs'
 import { ensureAgentArtifact, materializeAgentArtifact } from './release-artifacts/agent-store.mjs'
 import { ensureWasmArtifact, materializeWasmArtifact } from './release-artifacts/store.mjs'
@@ -61,12 +62,7 @@ async function waitForHealth(containerName) {
 async function smokeTest(image, platform) {
   const containerName = `homelab-inventory-security-${platform.replaceAll('/', '-')}-${Date.now()}`
   try {
-    await run([
-      'docker', 'run', '--detach', '--name', containerName,
-      '--platform', platform,
-      '--publish', '127.0.0.1::8798',
-      image,
-    ])
+    await run(smokeRunCommand({ containerName, platform, image }))
     await waitForHealth(containerName)
     await run([
       'docker', 'exec', containerName,
