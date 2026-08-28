@@ -671,11 +671,17 @@ const RELEASE_0_16_3_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_4_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Switching between warm Canvas workspaces now fully isolates parked layers so equipment from another Canvas cannot paint over the selected workspace.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -1206,9 +1212,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.16.3',
+    version: '0.16.4',
     date: '2026-08-27',
     channel: 'latest',
+    title: 'Isolated warm Canvas rendering',
+    ...RELEASE_0_16_4_DETAILS,
+  },
+  {
+    version: '0.16.3',
+    date: '2026-08-27',
+    channel: 'release',
     title: 'Lighter workspaces and faster delivery',
     ...RELEASE_0_16_3_DETAILS,
   },
