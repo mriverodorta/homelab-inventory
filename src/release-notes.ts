@@ -673,7 +673,9 @@ const RELEASE_0_16_3_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Switching between warm Canvas workspaces now fully isolates parked layers so equipment from another Canvas cannot paint over the selected workspace.',
+  ],
   notes: [],
 }
 

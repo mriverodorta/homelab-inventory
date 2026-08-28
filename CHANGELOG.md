@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Parked warm Canvas layers now use non-overridable paint isolation, preventing equipment from another Canvas from appearing over the selected workspace during tab switches.
+
 ## [0.16.3] - 2026-08-27
 
 ### Changed

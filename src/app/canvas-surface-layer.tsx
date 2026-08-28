@@ -53,7 +53,9 @@ function CanvasSurfaceLayerComponent({
       inert={!active ? true : undefined}
       className={cn(
         'absolute inset-0 flex min-h-0 min-w-0',
-        active ? 'visible pointer-events-auto' : 'invisible pointer-events-none',
+        active
+          ? 'visible z-10 opacity-100 pointer-events-auto'
+          : 'invisible z-0 opacity-0 pointer-events-none',
       )}
     >
       <Canvas

@@ -103,11 +103,18 @@ describe('CanvasSurfacePool', () => {
           unmounts.set(runtimeKey!, (unmounts.get(runtimeKey!) ?? 0) + 1)
         }
       }, [runtimeKey])
-      return <div
-        data-testid={`canvas-${runtimeKey}`}
-        data-interactive={interactionEnabled}
-        data-surface-state={surfaceState}
-      />
+      return (
+        <div
+          data-testid={`canvas-${runtimeKey}`}
+          data-interactive={interactionEnabled}
+          data-surface-state={surfaceState}
+        >
+          <div
+            data-testid={`explicitly-visible-${runtimeKey}`}
+            style={{ visibility: 'visible' }}
+          />
+        </div>
+      )
     }
 
     const view = render(
@@ -160,9 +167,11 @@ describe('CanvasSurfacePool', () => {
     const inactive = screen.getByTestId('canvas-runtime-surface-B')
     expect(active).toHaveAttribute('aria-hidden', 'false')
     expect(active).not.toHaveAttribute('inert')
+    expect(active).toHaveClass('visible', 'z-10', 'opacity-100', 'pointer-events-auto')
     expect(inactive).toHaveAttribute('aria-hidden', 'true')
     expect(inactive).toHaveAttribute('inert')
-    expect(inactive).toHaveClass('invisible', 'pointer-events-none')
+    expect(inactive).toHaveClass('invisible', 'z-0', 'opacity-0', 'pointer-events-none')
+    expect(screen.getByTestId('explicitly-visible-B')).toHaveStyle({ visibility: 'visible' })
   })
 
   it('unmounts a surface only after its matching runtime key is pruned', () => {
