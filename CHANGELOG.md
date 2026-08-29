@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.7] - 2026-08-28
+
 ### Fixed
 
 - Demo, test, staging, candidate-image, and container-security runtimes now disable LabGD, Registry identity and contributions, Registry refresh, and update checks through one fail-closed policy; isolated smoke containers have no network or host port and fail if external identity files are created.

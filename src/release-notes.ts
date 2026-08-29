@@ -695,7 +695,7 @@ const RELEASE_0_16_6_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_7_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Demo, test, staging, release-validation, and security-smoke runtimes can no longer enroll with lab.gd or create Registry identities, even when they have writable temporary data.',
@@ -712,6 +712,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Local validation now runs independent test families concurrently with bounded worker pressure, proves locally loaded images against exact OCI config and rootfs identities, and retains only a cache-free BuildKit runtime between ARM64 approval and AMD64 validation.',
     'Installation account status is refreshed on authoritative account events, explicit reconciliation, and a six-hour stale-state boundary rather than on every event reconnect.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1241,9 +1247,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.16.6',
+    version: '0.16.7',
     date: '2026-08-28',
     channel: 'latest',
+    title: 'Reliable, quiet LabGD connections',
+    ...RELEASE_0_16_7_DETAILS,
+  },
+  {
+    version: '0.16.6',
+    date: '2026-08-28',
+    channel: 'release',
     title: 'Persistent Canvas zoom limits',
     ...RELEASE_0_16_6_DETAILS,
   },
