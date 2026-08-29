@@ -67,14 +67,26 @@ Sharing identity is independent from Registry enrollment:
 /data/sharing/public-id-key
 ```
 
-Private files use mode `0600`. While remote event interest exists, short-lived
+Private files use mode `0600`. The event stream and credential-renewal timer run
+only while a published share, publication operation, account operation, account
+claim, or recovery requires remote events. An enrolled installation with no
+remote work remains connected but idle. While event interest exists, short-lived
 credentials renew proactively before expiration, independently of browser
 requests and event callbacks. The event stream reconnects after network
-failures, LabGD restarts, credential renewal, and Homelab Inventory restarts
-while the UUID, remote installation, and private key remain stable. Failed key rotation keeps
+failures, LabGD restarts, credential renewal, heartbeat silence, and Homelab
+Inventory restarts while the UUID, remote installation, and private key remain
+stable. Pending account claims persist only their opaque claim ID and expiration;
+the user code is never stored. Failed key rotation keeps
 the old key and credentials. Recovery-pending state retains exactly one
 replacement key, stops publication, and waits for owner approval without a
 retry loop.
+
+Account state is reconciled from authoritative claim and unlink events, explicit
+user reconciliation, and a six-hour stale-state boundary. Reconnecting the event
+stream by itself does not issue another account-status request. Settings exposes
+only aggregate stream-open, reconnect, credential-refresh, and idle-transition
+counts plus bounded connection timestamps and error codes. It never exposes or
+logs credentials, signatures, nonces, private keys, claim IDs, or request bodies.
 
 `sync.sh` excludes every sharing identity file in both directions and rebuilds
 the destination's public SQLite projection when needed. Complete backups and

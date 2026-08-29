@@ -6,12 +6,16 @@ const BASE_BACKOFF_MS = 1_000
 const BACKOFF_JITTER_RATIO = 0.2
 const TOKEN_REFRESH_MARGIN_MS = 90_000
 const CONNECTION_LIVENESS_MS = 2 * 60_000
+const HEARTBEAT_SILENCE_MS = 45_000
+const ACCOUNT_RECONCILE_MAX_AGE_MS = 6 * 60 * 60_000
 const DEFAULT_INTEREST = Object.freeze({
   required: true,
   activeShares: 0,
   pendingPublicationOperations: 0,
   pendingAccountOperations: 0,
   recoveryPending: false,
+  pendingClaim: false,
+  pendingClaimExpiresAtMs: null,
 })
 
 export class SharingInstallationEventCoordinator {
@@ -28,6 +32,8 @@ export class SharingInstallationEventCoordinator {
     logger = console,
     tokenRefreshMarginMs = TOKEN_REFRESH_MARGIN_MS,
     connectionLivenessMs = CONNECTION_LIVENESS_MS,
+    heartbeatSilenceMs = HEARTBEAT_SILENCE_MS,
+    accountReconcileMaxAgeMs = ACCOUNT_RECONCILE_MAX_AGE_MS,
   }) {
     this.repository = repository
     this.client = client
@@ -40,17 +46,23 @@ export class SharingInstallationEventCoordinator {
     this.clearTimer = clearTimer
     this.reconnectTimer = null
     this.renewalTimer = null
-    this.interestTimer = null
+    this.claimTimer = null
+    this.watchdogTimer = null
     this.running = null
     this.reader = null
+    this.connectionController = null
     this.stopped = true
     this.attempt = 0
     this.streamConnected = false
     this.renewalRequested = false
-    this.claimInterestUntilMs = null
+    this.watchdogTimedOut = false
+    this.lastFrameAtMs = null
+    this.dormant = null
     this.logger = logger
     this.tokenRefreshMarginMs = tokenRefreshMarginMs
     this.connectionLivenessMs = connectionLivenessMs
+    this.heartbeatSilenceMs = heartbeatSilenceMs
+    this.accountReconcileMaxAgeMs = accountReconcileMaxAgeMs
   }
 
   start() {
@@ -63,7 +75,10 @@ export class SharingInstallationEventCoordinator {
     this.stopped = true
     this.clearReconnectTimer()
     this.clearRenewalTimer()
-    this.clearInterestTimer()
+    this.clearClaimTimer()
+    this.clearWatchdogTimer()
+    this.connectionController?.abort()
+    this.connectionController = null
     void this.reader?.cancel().catch(() => {})
     this.reader = null
     this.streamConnected = false
@@ -71,62 +86,86 @@ export class SharingInstallationEventCoordinator {
 
   wake() {
     if (this.stopped || !this.effectiveEnabled) return
+    this.repository.expirePendingAccountClaim?.(this.now())
     const settings = this.repository.getSettings()
+    const interest = this.durableInterest()
+    this.scheduleClaimExpiry(interest.pendingClaimExpiresAtMs)
     if (!settings.connectionEnabled || settings.enrollmentState !== 'connected' || !this.hasInterest()) {
       this.enterDormant()
       return
     }
+    this.dormant = false
     if (this.running || this.reconnectTimer) return
     this.attempt = settings.reconnectAttempt ?? 0
     this.scheduleReconnect(Math.max(0, (settings.nextReconnectAtMs ?? this.now()) - this.now()))
   }
 
-  holdClaimUntil(expiresAt) {
+  holdClaim({ claimId, expiresAt }) {
     const expiresAtMs = typeof expiresAt === 'string' ? Date.parse(expiresAt) : Number(expiresAt)
-    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= this.now()) return false
-    this.claimInterestUntilMs = Math.max(this.claimInterestUntilMs ?? 0, expiresAtMs)
-    this.scheduleInterestExpiry()
+    if (!Number.isSafeInteger(expiresAtMs) || expiresAtMs <= this.now()) return false
+    this.repository.savePendingAccountClaim?.(claimId, expiresAtMs)
+    this.scheduleClaimExpiry(expiresAtMs)
     this.wake()
     return true
   }
 
-  releaseClaimInterest() {
-    this.claimInterestUntilMs = null
-    this.clearInterestTimer()
+  releaseClaimInterest(claimId) {
+    this.repository.clearPendingAccountClaim?.(claimId)
+    this.clearClaimTimer()
     this.wake()
   }
 
   durableInterest() {
-    return this.repository.getRemoteEventInterest?.() ?? DEFAULT_INTEREST
+    return this.repository.getRemoteEventInterest?.(this.now()) ?? DEFAULT_INTEREST
   }
 
   hasInterest() {
-    return this.durableInterest().required || (this.claimInterestUntilMs ?? 0) > this.now()
+    return this.durableInterest().required
   }
 
-  scheduleInterestExpiry() {
-    this.clearInterestTimer()
-    if (this.claimInterestUntilMs == null) return
-    this.interestTimer = this.setTimer(() => {
-      this.interestTimer = null
-      if ((this.claimInterestUntilMs ?? 0) <= this.now()) this.claimInterestUntilMs = null
+  scheduleClaimExpiry(expiresAtMs) {
+    this.clearClaimTimer()
+    if (!Number.isSafeInteger(expiresAtMs) || expiresAtMs <= this.now()) return
+    this.claimTimer = this.setTimer(() => {
+      this.claimTimer = null
+      this.repository.expirePendingAccountClaim?.(this.now())
       this.wake()
-    }, Math.max(0, this.claimInterestUntilMs - this.now()))
-    this.interestTimer?.unref?.()
+    }, expiresAtMs - this.now())
+    this.claimTimer?.unref?.()
   }
 
-  clearInterestTimer() {
-    if (this.interestTimer) this.clearTimer(this.interestTimer)
-    this.interestTimer = null
+  clearClaimTimer() {
+    if (this.claimTimer) this.clearTimer(this.claimTimer)
+    this.claimTimer = null
+  }
+
+  resetWatchdog() {
+    this.clearWatchdogTimer()
+    this.lastFrameAtMs = this.now()
+    this.watchdogTimer = this.setTimer(() => {
+      this.watchdogTimer = null
+      this.watchdogTimedOut = true
+      this.connectionController?.abort()
+    }, this.heartbeatSilenceMs)
+    this.watchdogTimer?.unref?.()
+  }
+
+  clearWatchdogTimer() {
+    if (this.watchdogTimer) this.clearTimer(this.watchdogTimer)
+    this.watchdogTimer = null
   }
 
   enterDormant() {
     this.clearReconnectTimer()
     this.clearRenewalTimer()
+    this.clearWatchdogTimer()
     this.renewalRequested = false
+    this.connectionController?.abort()
     if (this.reader) void this.reader.cancel().catch(() => {})
     this.reader = null
     this.streamConnected = false
+    if (this.dormant === false) this.repository.incrementEventMetric?.('dormantTransitionCount')
+    this.dormant = true
     const settings = this.repository.getSettings?.()
     if (settings && ((settings.reconnectAttempt ?? 0) !== 0 || settings.nextReconnectAtMs != null || settings.eventLastErrorCode != null)) {
       this.repository.updateEventConnection?.({
@@ -175,30 +214,39 @@ export class SharingInstallationEventCoordinator {
 
   connect() {
     if (this.running) return this.running
-    const running = this.connectInternal().finally(() => {
+    const controller = new AbortController()
+    this.connectionController = controller
+    this.watchdogTimedOut = false
+    const running = this.connectInternal(controller.signal).finally(() => {
+      if (this.connectionController === controller) this.connectionController = null
       if (this.running === running) this.running = null
     })
     this.running = running
     return running
   }
 
-  async connectInternal() {
+  async connectInternal(signal) {
     if (this.stopped || !this.effectiveEnabled) return
     const settings = this.repository.getSettings()
     if (!settings.connectionEnabled || settings.enrollmentState !== 'connected' || !this.hasInterest() || this.identityService.getCapabilities().installationEvents !== true) return
     let opened = false
     try {
-      const credentials = await this.identityService.activate?.()
+      const credentials = await this.identityService.activate?.({ signal })
       if (!this.hasInterest()) return
       this.renewalRequested = false
       if (credentials?.tokenExpiresAt) this.scheduleRenewal(Date.parse(credentials.tokenExpiresAt))
-      await this.identityService.reconcileAccountStatus?.()
+      const interest = this.durableInterest()
+      if (!interest.pendingClaim && this.repository.accountReconciliationDue?.(this.now(), this.accountReconcileMaxAgeMs)) {
+        await this.identityService.reconcileAccountStatus?.(undefined, { signal })
+      }
       if (!this.hasInterest()) return
-      const response = await this.client.events(settings.remoteEventCursor)
+      const response = await this.client.events(settings.remoteEventCursor, { signal })
       if (!response.body) throw Object.assign(new Error('lab.gd event stream has no body.'), { code: 'sharing-events-invalid' })
       this.attempt = 0
       opened = true
       this.streamConnected = true
+      this.dormant = false
+      this.repository.incrementEventMetric?.('streamOpenCount')
       this.repository.updateEventConnection?.({
         lastConnectedAtMs: this.now(),
         lastErrorCode: null,
@@ -207,10 +255,11 @@ export class SharingInstallationEventCoordinator {
       })
       this.onStateChanged(this.repository.getSettings(), 'sharing.status-changed')
       this.reader = response.body.getReader()
+      this.resetWatchdog()
       await consumeSse(this.reader, async (event) => {
         if (event.kind === 'account-claim' || event.kind === 'account-unlink') {
-          await this.identityService.reconcileAccountStatus(event.id)
-          if (event.kind === 'account-claim') this.releaseClaimInterest()
+          await this.identityService.reconcileAccountStatus(event.id, { signal })
+          if (event.kind === 'account-claim') this.releaseClaimInterest(event.payload.claimId)
           this.onStateChanged(this.repository.getSettings(),'sharing.status-changed')
           this.wake()
           return
@@ -220,10 +269,11 @@ export class SharingInstallationEventCoordinator {
         if (result.shares.length) result.shares.forEach((share) => this.onStateChanged(share, 'sharing.share-changed'))
         else this.onStateChanged(this.repository.getSettings(), 'sharing.status-changed')
         this.wake()
-      })
+      }, () => this.resetWatchdog())
     } catch (error) {
-      if (this.stopped) return
+      if (this.stopped || (signal.aborted && !this.watchdogTimedOut)) return
       let connectionError = error
+      if (this.watchdogTimedOut) connectionError = Object.assign(new Error('lab.gd event stream heartbeat timed out.'), { code: 'sharing-events-heartbeat-timeout' })
       if (error?.code === 'sharing-event-version-unsupported') {
         try {
           await this.identityService.readiness()
@@ -236,6 +286,7 @@ export class SharingInstallationEventCoordinator {
       const errorCode = sanitizeEventErrorCode(connectionError?.code)
       const failedAt = this.now()
       const nextReconnectAtMs = failedAt + delay
+      this.repository.incrementEventMetric?.('reconnectCount')
       this.repository.updateEventConnection?.({
         lastDisconnectedAtMs: failedAt,
         lastErrorCode: errorCode,
@@ -249,6 +300,7 @@ export class SharingInstallationEventCoordinator {
       })
     } finally {
       this.reader = null
+      this.clearWatchdogTimer()
       if (opened) {
         this.streamConnected = false
         this.repository.updateEventConnection?.({ lastDisconnectedAtMs: this.now() })
@@ -278,14 +330,24 @@ export class SharingInstallationEventCoordinator {
       && projection.credentialExpiresAtMs > now
     const live = this.streamConnected
     const interest = this.durableInterest()
-    const transientInterest = (this.claimInterestUntilMs ?? 0) > now
-    const dormant = !interest.required && !transientInterest
+    const lifecycle = this.repository.getEventLifecycle?.()
+    const dormant = !interest.required
     const staleConnected = !dormant && settings.enrollmentState === 'connected'
       && !live && !recentlyAuthenticated && !credentialValid
     return {
       live,
       dormant,
-      interest: { ...interest, transientClaim: transientInterest },
+      interest: {
+        ...interest,
+        reasons: interestReasons(interest),
+      },
+      metrics: {
+        streamOpenCount: lifecycle?.streamOpenCount ?? 0,
+        reconnectCount: lifecycle?.reconnectCount ?? 0,
+        credentialRefreshCount: lifecycle?.credentialRefreshCount ?? 0,
+        dormantTransitionCount: lifecycle?.dormantTransitionCount ?? 0,
+        lastFrameAtMs: this.lastFrameAtMs,
+      },
       recentlyAuthenticated,
       credentialValid,
       effectiveEnrollmentState: staleConnected ? 'retrying' : settings.enrollmentState,
@@ -310,11 +372,12 @@ function sanitizeEventErrorCode(value) {
   return typeof value === 'string' && /^[a-z0-9-]{1,80}$/u.test(value) ? value : 'sharing-events-unavailable'
 }
 
-async function consumeSse(reader, onEvent) {
+async function consumeSse(reader, onEvent, onActivity = () => {}) {
   const decoder = new TextDecoder()
   let buffer = ''
   while (true) {
     const { done, value } = await reader.read()
+    if (value?.byteLength) onActivity()
     buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done }).replace(/\r\n?/gu, '\n')
     if (Buffer.byteLength(buffer) > MAX_FRAME_BYTES * 2) throw Object.assign(new Error('lab.gd event stream frame is too large.'), { code: 'sharing-events-invalid' })
     let boundary
@@ -328,6 +391,16 @@ async function consumeSse(reader, onEvent) {
       return
     }
   }
+}
+
+function interestReasons(interest) {
+  return [
+    ...(interest.activeShares > 0 ? ['active-shares'] : []),
+    ...(interest.pendingPublicationOperations > 0 ? ['publication-operations'] : []),
+    ...(interest.pendingAccountOperations > 0 ? ['account-operations'] : []),
+    ...(interest.recoveryPending ? ['recovery'] : []),
+    ...(interest.pendingClaim ? ['account-claim'] : []),
+  ]
 }
 
 function parseFrame(frame) {

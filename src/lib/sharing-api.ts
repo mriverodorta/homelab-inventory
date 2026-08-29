@@ -40,6 +40,24 @@ export type SharingSettingsResponse = Readonly<{
     recoveryState: 'pending-owner-approval' | 'approved' | null
     connection?: {
       live: boolean
+      dormant: boolean
+      interest: {
+        required: boolean
+        activeShares: number
+        pendingPublicationOperations: number
+        pendingAccountOperations: number
+        recoveryPending: boolean
+        pendingClaim: boolean
+        pendingClaimExpiresAtMs: number | null
+        reasons: readonly ('active-shares' | 'publication-operations' | 'account-operations' | 'recovery' | 'account-claim')[]
+      }
+      metrics: {
+        streamOpenCount: number
+        reconnectCount: number
+        credentialRefreshCount: number
+        dormantTransitionCount: number
+        lastFrameAtMs: number | null
+      }
       recentlyAuthenticated: boolean
       credentialValid: boolean
       effectiveEnrollmentState: SharingEnrollmentState

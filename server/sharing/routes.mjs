@@ -200,13 +200,14 @@ export function registerSharingRoutes(app, {
   app.post('/api/sharing/account/claim', (_request, response) => handle(response, async () => {
     requireRuntime()
     const claim = await identityService.createClaimDevice()
-    eventCoordinator?.holdClaimUntil?.(claim.expiresAt)
+    if (claim.state === 'pending') eventCoordinator?.holdClaim?.({ claimId: claim.claimId, expiresAt: claim.expiresAt })
     response.status(201).json(claim)
   }))
 
   app.post('/api/sharing/account/reconcile', (_request, response) => handle(response, async () => {
     requireRuntime()
     await identityService.reconcileAccountStatus()
+    eventCoordinator?.wake()
     response.json(publicSettings(repository, flags, currentCapabilities(), eventCoordinator))
   }))
 

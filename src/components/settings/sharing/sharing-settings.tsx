@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Cloud, CloudOff, Link2Off, LoaderCircle, Plus, RotateCw, ShieldAlert, UserRoundPlus } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, CirclePause, Cloud, CloudOff, Link2Off, LoaderCircle, Plus, RotateCw, ShieldAlert, UserRoundPlus } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -9,7 +9,7 @@ import { SettingsSection, SettingRow } from '@/components/settings/settings-prim
 import { usePermission } from '@/hooks/use-permission'
 import { useSharing } from '@/hooks/use-sharing'
 import { loadInventoryMetadataCatalog } from '@/lib/inventory-metadata-api'
-import type { ShareConfiguration, ShareDisposition, ShareInput, SharePreview, ShareRecord } from '@/lib/sharing-api'
+import type { ShareConfiguration, ShareDisposition, ShareInput, SharePreview, ShareRecord, SharingSettingsResponse } from '@/lib/sharing-api'
 import { loadProjectWorkbooks } from '@/lib/workbook-api'
 import { AccountClaimDialog } from './account-claim-dialog'
 import { AccountUnlinkDialog } from './account-unlink-dialog'
@@ -18,8 +18,8 @@ import { ShareDialog } from './share-dialog'
 import { ShareList } from './share-list'
 import { SharePrivacySummary } from './share-privacy-summary'
 
-function enrollmentLabel(state: string) {
-  if (state === 'connected') return 'Connected'
+function enrollmentLabel(state: string, dormant = false) {
+  if (state === 'connected') return dormant ? 'Connected, idle' : 'Connected'
   if (state === 'pending') return 'Connecting'
   if (state === 'retrying') return 'Retry scheduled'
   if (state === 'recovery-pending') return 'Owner approval required'
@@ -27,7 +27,8 @@ function enrollmentLabel(state: string) {
   return 'Disconnected'
 }
 
-function EnrollmentIcon({ state }: { state: string }) {
+function EnrollmentIcon({ state, dormant = false }: { state: string; dormant?: boolean }) {
+  if (state === 'connected' && dormant) return <CirclePause className="size-4 text-[#756d62]" />
   if (state === 'connected') return <CheckCircle2 className="size-4 text-[#2f7658]" />
   if (state === 'pending' || state === 'retrying') return <LoaderCircle className="size-4 animate-spin text-[#9a671c]" />
   if (state === 'recovery-pending' || state === 'unsupported') return <ShieldAlert className="size-4 text-[#ad4637]" />
@@ -56,6 +57,7 @@ export function SharingSettings() {
   const status = sharing.settings.data
   const settings = status?.settings
   const account=settings?.account??{claimed:false,githubUsername:null,claimedAtMs:null,bindingRevision:0}
+  const connection=settings?.connection
 
   useEffect(() => {
     if (!editorOpen) setEditing(null)
@@ -171,8 +173,17 @@ export function SharingSettings() {
     <div className="grid gap-6">
       <SettingsSection title="Sharing" description="Publish selected read-only project views to lab.gd without exposing the rest of this installation.">
         <SettingRow label="lab.gd connection" description="Production installations enroll automatically after startup. Publication always requires an explicit privacy review.">
-          <div className="flex items-center gap-3"><span className="flex items-center gap-2 text-sm font-bold text-[#403a33]"><EnrollmentIcon state={settings.enrollmentState} />{enrollmentLabel(settings.enrollmentState)}</span><Switch aria-label="Enable lab.gd sharing" checked={settings.connectionEnabled} disabled={sharing.updateConnection.isPending} onCheckedChange={(enabled) => sharing.updateConnection.mutate({ expectedRevision: settings.revision, enabled })} /></div>
+          <div className="flex items-center gap-3"><span className="flex items-center gap-2 text-sm font-bold text-[#403a33]"><EnrollmentIcon state={settings.enrollmentState} dormant={connection?.dormant} />{enrollmentLabel(settings.enrollmentState, connection?.dormant)}</span><Switch aria-label="Enable lab.gd sharing" checked={settings.connectionEnabled} disabled={sharing.updateConnection.isPending} onCheckedChange={(enabled) => sharing.updateConnection.mutate({ expectedRevision: settings.revision, enabled })} /></div>
         </SettingRow>
+        {settings.connectionEnabled && connection?.dormant ? <div className="border-b border-[#e8e1d6] bg-[#f7f5f1] px-4 py-3 text-sm text-[#665e54]">No active remote work. The event connection and credential renewal are paused.</div> : null}
+        {settings.connectionEnabled && connection ? <SettingRow label="Event runtime" description={connection.interest.reasons.length ? `Active: ${connection.interest.reasons.map(formatInterestReason).join(', ')}` : 'No current remote event interest.'}>
+          <dl className="grid grid-cols-2 gap-x-5 gap-y-1 text-right text-xs tabular-nums text-[#665e54] sm:grid-cols-4">
+            <div><dt className="font-medium">Streams</dt><dd>{connection.metrics.streamOpenCount}</dd></div>
+            <div><dt className="font-medium">Reconnects</dt><dd>{connection.metrics.reconnectCount}</dd></div>
+            <div><dt className="font-medium">Renewals</dt><dd>{connection.metrics.credentialRefreshCount}</dd></div>
+            <div><dt className="font-medium">Idle transitions</dt><dd>{connection.metrics.dormantTransitionCount}</dd></div>
+          </dl>
+        </SettingRow> : null}
         {settings.enrollmentState === 'retrying' ? <div className="flex items-start gap-3 border-b border-[#e8e1d6] bg-[#fff8e8] p-4 text-sm text-[#6f4d16]"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>lab.gd is unavailable. This app remains healthy and will retry with bounded backoff{settings.nextAttemptAtMs ? ` after ${new Date(settings.nextAttemptAtMs).toLocaleString()}` : ''}.</p></div> : null}
         {settings.enrollmentState === 'recovery-pending' ? <div className="flex items-center justify-between gap-4 border-b border-[#e8e1d6] bg-[#fff4ee] p-4"><p className="text-sm leading-5 text-[#7a2c1d]">A replacement key is waiting for owner approval. Publication is stopped and no additional replacement key will be created.</p>{canPublish ? <Button variant="outline" onClick={() => sharing.resumeRecovery.mutate()} disabled={sharing.resumeRecovery.isPending}><RotateCw />Resume recovery</Button> : null}</div> : null}
         {!settings.connectionEnabled ? <div className="flex items-start gap-3 bg-[#fff8e8] p-4 text-sm leading-5 text-[#6f4d16]"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>The stable local identity is retained. Existing public content follows lab.gd lifecycle policy until this installation reconnects and receives resumable events.</p></div> : null}
@@ -196,4 +207,14 @@ export function SharingSettings() {
       {status.capabilities.accountUnlink ? <AccountUnlinkDialog open={unlinkOpen} username={account.githubUsername} pending={sharing.unlinkAccount.isPending} error={sharing.unlinkAccount.error instanceof Error ? sharing.unlinkAccount.error.message : null} onOpenChange={(open) => { setUnlinkOpen(open); if (!open) setUnlinkAttemptId(null) }} onConfirm={(disposition, confirmation) => void unlinkAccount(disposition, confirmation)} /> : null}
     </div>
   )
+}
+
+function formatInterestReason(reason: NonNullable<SharingSettingsResponse['settings']['connection']>['interest']['reasons'][number]) {
+  return ({
+    'active-shares': 'shares',
+    'publication-operations': 'publication',
+    'account-operations': 'account operation',
+    recovery: 'recovery',
+    'account-claim': 'account claim',
+  } as const)[reason]
 }

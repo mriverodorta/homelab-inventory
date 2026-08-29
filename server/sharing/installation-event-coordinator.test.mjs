@@ -12,6 +12,8 @@ function lifecycleRepository(initial = {}) {
     pendingPublicationOperations: 0,
     pendingAccountOperations: 0,
     recoveryPending: false,
+    pendingClaim: false,
+    pendingClaimExpiresAtMs: null,
   }
   let settings = {
     connectionEnabled: true,
@@ -26,9 +28,29 @@ function lifecycleRepository(initial = {}) {
     ...initial,
   }
   let projection = { credentialExpiresAtMs: initial.credentialExpiresAtMs ?? null }
+  let lifecycle = {
+    pendingClaimId: null,
+    pendingClaimExpiresAtMs: null,
+    accountLastReconciledAtMs: Object.hasOwn(initial, 'accountLastReconciledAtMs') ? initial.accountLastReconciledAtMs : Date.parse('2026-08-22T12:00:00.000Z'),
+    streamOpenCount: 0,
+    reconnectCount: 0,
+    credentialRefreshCount: 0,
+    dormantTransitionCount: 0,
+  }
   return {
     getSettings: () => ({ ...settings }),
-    getRemoteEventInterest: () => ({ ...interest }),
+    getRemoteEventInterest: (at = Date.now()) => ({
+      ...interest,
+      pendingClaim: lifecycle.pendingClaimExpiresAtMs !== null && lifecycle.pendingClaimExpiresAtMs > at,
+      pendingClaimExpiresAtMs: lifecycle.pendingClaimExpiresAtMs,
+      required: interest.required || (lifecycle.pendingClaimExpiresAtMs !== null && lifecycle.pendingClaimExpiresAtMs > at),
+    }),
+    getEventLifecycle: () => ({ ...lifecycle }),
+    incrementEventMetric: vi.fn((metric) => { lifecycle = { ...lifecycle, [metric]: lifecycle[metric] + 1 }; return { ...lifecycle } }),
+    savePendingAccountClaim: vi.fn((claimId, expiresAtMs) => { lifecycle = { ...lifecycle, pendingClaimId: claimId, pendingClaimExpiresAtMs: expiresAtMs } }),
+    clearPendingAccountClaim: vi.fn((claimId) => { if (claimId === undefined || claimId === lifecycle.pendingClaimId) lifecycle = { ...lifecycle, pendingClaimId: null, pendingClaimExpiresAtMs: null } }),
+    expirePendingAccountClaim: vi.fn((at) => { if (lifecycle.pendingClaimExpiresAtMs !== null && lifecycle.pendingClaimExpiresAtMs <= at) lifecycle = { ...lifecycle, pendingClaimId: null, pendingClaimExpiresAtMs: null } }),
+    accountReconciliationDue: vi.fn((at, maximumAge) => lifecycle.accountLastReconciledAtMs === null || at - lifecycle.accountLastReconciledAtMs >= maximumAge),
     getInstallationProjection: () => ({ ...projection }),
     updateEventConnection: vi.fn((patch) => {
       const { lastErrorCode, ...rest } = patch
@@ -48,6 +70,20 @@ function controlledStream() {
     cancel() { cancelled = true },
   }), { headers: { 'content-type': 'text/event-stream' } })
   return { response, cancelled: () => cancelled }
+}
+
+function pushStream(signal = null) {
+  let controller
+  const response = new Response(new ReadableStream({
+    start(value) {
+      controller = value
+      signal?.addEventListener('abort', () => value.error(new DOMException('Aborted', 'AbortError')), { once: true })
+    },
+  }), { headers: { 'content-type': 'text/event-stream' } })
+  return {
+    response,
+    push(value) { controller.enqueue(new TextEncoder().encode(value)) },
+  }
 }
 
 function timerHarness() {
@@ -98,11 +134,10 @@ describe('sharing installation event coordinator', () => {
     const coordinator = new SharingInstallationEventCoordinator({ repository, client, identityService: { getCapabilities: () => ({ installationEvents: true }), readiness: vi.fn() }, onStateChanged: vi.fn(), setTimer: (_callback, delay) => { delays.push(delay); return 1 }, clearTimer: vi.fn() })
     coordinator.stopped = false
     await coordinator.connect()
-    expect(client.events).toHaveBeenCalledWith(7)
+    expect(client.events).toHaveBeenCalledWith(7, { signal: expect.any(AbortSignal) })
     expect(applied).toEqual([8, 9])
-    expect(delays).toHaveLength(1)
-    expect(delays[0]).toBeGreaterThanOrEqual(1000)
-    expect(delays[0]).toBeLessThanOrEqual(1200)
+    const reconnectDelays = delays.filter((delay) => delay >= 1000 && delay <= 1200)
+    expect(reconnectDelays).toHaveLength(1)
   })
 
   it('renegotiates instead of committing an unknown event version', async () => {
@@ -142,8 +177,8 @@ describe('sharing installation event coordinator', () => {
 
     await coordinator.connect()
 
-    expect(reconcileAccountStatus).toHaveBeenCalledWith()
-    expect(reconcileAccountStatus).toHaveBeenCalledWith(12)
+    expect(reconcileAccountStatus).toHaveBeenCalledOnce()
+    expect(reconcileAccountStatus).toHaveBeenCalledWith(12, { signal: expect.any(AbortSignal) })
     expect(applyRemoteEvent).not.toHaveBeenCalled()
     expect(onStateChanged).toHaveBeenCalledWith(repository.getSettings(), 'sharing.status-changed')
   })
@@ -214,7 +249,7 @@ describe('sharing installation event coordinator', () => {
     expect(coordinator.status()).toMatchObject({
       dormant: true,
       effectiveEnrollmentState: 'connected',
-      interest: { required: false, transientClaim: false },
+      interest: { required: false, pendingClaim: false },
     })
   })
 
@@ -246,15 +281,15 @@ describe('sharing installation event coordinator', () => {
       clearTimer: timers.clearTimer,
     })
     coordinator.start()
-    expect(coordinator.holdClaimUntil(currentTime + 30_000)).toBe(true)
+    expect(coordinator.holdClaim({ claimId: 'claim_123', expiresAt: currentTime + 30_000 })).toBe(true)
     timers.next(0).callback()
     await eventually(() => expect(client.events).toHaveBeenCalledOnce())
-    expect(coordinator.status()).toMatchObject({ dormant: false, interest: { transientClaim: true } })
+    expect(coordinator.status()).toMatchObject({ dormant: false, interest: { pendingClaim: true } })
 
     currentTime += 30_000
     timers.next(30_000).callback()
     await eventually(() => expect(pending.cancelled()).toBe(true))
-    expect(coordinator.status()).toMatchObject({ dormant: true, interest: { transientClaim: false } })
+    expect(coordinator.status()).toMatchObject({ dormant: true, interest: { pendingClaim: false } })
     expect(timers.entries.filter(({ active }) => active)).toHaveLength(0)
   })
 
@@ -382,5 +417,101 @@ describe('sharing installation event coordinator', () => {
     expect(coordinator.status()).toMatchObject({ effectiveEnrollmentState: 'connected', live: true })
     coordinator.stop()
     await one
+  })
+
+  it('aborts activation immediately when the last remote interest disappears', async () => {
+    const repository = lifecycleRepository()
+    let activationSignal
+    const activate = vi.fn(({ signal }) => new Promise((_resolve, reject) => {
+      activationSignal = signal
+      signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+    }))
+    const coordinator = new SharingInstallationEventCoordinator({
+      repository,
+      client: { events: vi.fn() },
+      identityService: { activate, getCapabilities: () => ({ installationEvents: true }) },
+      logger: { warn: vi.fn() },
+    })
+    coordinator.stopped = false
+    const running = coordinator.connect()
+    await eventually(() => expect(activationSignal).toBeInstanceOf(AbortSignal))
+    repository.setInterest({ required: false, activeShares: 0 })
+    coordinator.wake()
+    await running
+    expect(activationSignal.aborted).toBe(true)
+    expect(repository.getSettings()).toMatchObject({ reconnectAttempt: 0, nextReconnectAtMs: null })
+  })
+
+  it('reconnects after heartbeat silence and resets the watchdog for comment frames', async () => {
+    let currentTime = 10_000
+    const timers = timerHarness()
+    const repository = lifecycleRepository()
+    let pending
+    const client = { events: vi.fn(async (_cursor, { signal }) => {
+      pending = pushStream(signal)
+      return pending.response
+    }) }
+    const coordinator = new SharingInstallationEventCoordinator({
+      repository,
+      client,
+      identityService: { activate: vi.fn(async () => ({ tokenExpiresAt: new Date(currentTime + 600_000).toISOString() })), getCapabilities: () => ({ installationEvents: true }) },
+      now: () => currentTime,
+      random: () => 0,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+      logger: { warn: vi.fn() },
+    })
+    coordinator.stopped = false
+    const running = coordinator.connect()
+    await eventually(() => expect(timers.next(45_000)).toBeTruthy())
+    const firstWatchdog = timers.next(45_000)
+    currentTime = 20_000
+    pending.push(': heartbeat\n\n')
+    await eventually(() => expect(firstWatchdog.active).toBe(false))
+    expect(coordinator.status().metrics.lastFrameAtMs).toBe(20_000)
+    timers.next(45_000).callback()
+    await running
+    expect(repository.getSettings()).toMatchObject({ eventLastErrorCode: 'sharing-events-heartbeat-timeout', reconnectAttempt: 1 })
+    expect(repository.getEventLifecycle()).toMatchObject({ streamOpenCount: 1, reconnectCount: 1 })
+  })
+
+  it('avoids account-status traffic on fresh reconnects and reconciles only stale state', async () => {
+    const freshRepository = lifecycleRepository({ accountLastReconciledAtMs: 100_000 })
+    const freshReconcile = vi.fn()
+    const fresh = new SharingInstallationEventCoordinator({
+      repository: freshRepository,
+      client: { events: vi.fn(async () => stream([': heartbeat\n\n'])) },
+      identityService: { activate: vi.fn(), reconcileAccountStatus: freshReconcile, getCapabilities: () => ({ installationEvents: true }) },
+      now: () => 100_001,
+      setTimer: () => 1,
+      clearTimer: vi.fn(),
+    })
+    fresh.stopped = false
+    await fresh.connect()
+    expect(freshReconcile).not.toHaveBeenCalled()
+
+    const staleRepository = lifecycleRepository({ accountLastReconciledAtMs: null })
+    const staleReconcile = vi.fn(async () => null)
+    const stale = new SharingInstallationEventCoordinator({
+      repository: staleRepository,
+      client: { events: vi.fn(async () => stream([': heartbeat\n\n'])) },
+      identityService: { activate: vi.fn(), reconcileAccountStatus: staleReconcile, getCapabilities: () => ({ installationEvents: true }) },
+      now: () => 100_001,
+      setTimer: () => 1,
+      clearTimer: vi.fn(),
+    })
+    stale.stopped = false
+    await stale.connect()
+    expect(staleReconcile).toHaveBeenCalledWith(undefined, { signal: expect.any(AbortSignal) })
+  })
+
+  it('resumes a persisted account claim after restart without exposing its identifier', () => {
+    const repository = lifecycleRepository({ interest: { required: false, activeShares: 0, pendingPublicationOperations: 0, pendingAccountOperations: 0, recoveryPending: false } })
+    const first = new SharingInstallationEventCoordinator({ repository, client: {}, identityService: {}, now: () => 10_000 })
+    expect(first.holdClaim({ claimId: 'claim_private_1', expiresAt: 70_000 })).toBe(true)
+    first.stop()
+    const restarted = new SharingInstallationEventCoordinator({ repository, client: {}, identityService: {}, now: () => 20_000 })
+    expect(restarted.status()).toMatchObject({ dormant: false, interest: { pendingClaim: true, pendingClaimExpiresAtMs: 70_000 } })
+    expect(JSON.stringify(restarted.status())).not.toContain('claim_private_1')
   })
 })

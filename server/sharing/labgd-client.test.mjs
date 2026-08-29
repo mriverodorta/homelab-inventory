@@ -9,6 +9,14 @@ describe('lab.gd installation control client', () => {
     expect(signedFetch).toHaveBeenCalledWith('/v1/installations/events', expect.objectContaining({ method: 'GET', scope: 'events:read', timeoutMs: 0, headers: { 'last-event-id': '42' } }))
   })
 
+  it('forwards the event-stream cancellation signal to the signed request', async () => {
+    const signedFetch = vi.fn(async () => new Response(': heartbeat\n\n', { headers: { 'content-type': 'text/event-stream' } }))
+    const client = new LabGdPublicationClient({ identityService: { signedFetch } })
+    const controller = new AbortController()
+    await client.events(0, { signal: controller.signal })
+    expect(signedFetch).toHaveBeenCalledWith('/v1/installations/events', expect.objectContaining({ signal: controller.signal }))
+  })
+
   it('keeps a protected password in the signed request only and returns a sanitized result', async () => {
     let requestBody = null
     const signedFetch = vi.fn(async (_path, options) => {

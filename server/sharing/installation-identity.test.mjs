@@ -123,6 +123,27 @@ describe('sharing installation identity', () => {
     expect(await readFile(join(dataDir, 'sharing', 'installation-ed25519.pem'), 'utf8')).toBe(keyBody)
   })
 
+  it('propagates cancellation through readiness and activation requests', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'homelab-sharing-identity-abort-'))
+    roots.push(dataDir)
+    let requestSignal
+    const service = new SharingInstallationIdentityService({
+      dataDir,
+      repository: repository(),
+      labGdOrigin: 'https://lab.example.test',
+      fetchImpl: async (_url, init) => new Promise((_resolve, reject) => {
+        requestSignal = init.signal
+        init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+      }),
+    })
+    const controller = new AbortController()
+    const activation = service.activate({ signal: controller.signal })
+    await Promise.resolve()
+    controller.abort()
+    await expect(activation).rejects.toMatchObject({ name: 'AbortError' })
+    expect(requestSignal.aborted).toBe(true)
+  })
+
   it('enrolls with a privacy-minimal activation payload and reuses credentials', async () => {
     const { dataDir, repo, service, requests } = await setup()
     const credentials = await service.activate()

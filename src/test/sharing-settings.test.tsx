@@ -49,6 +49,21 @@ function sharing(overrides: Record<string, unknown> = {}) {
           nextAttemptAtMs: null as number | null,
           lastErrorCode: null,
           recoveryState: null,
+          connection: {
+            live: true,
+            dormant: false,
+            interest: { required: true, activeShares: 1, pendingPublicationOperations: 0, pendingAccountOperations: 0, recoveryPending: false, pendingClaim: false, pendingClaimExpiresAtMs: null, reasons: ['active-shares'] },
+            metrics: { streamOpenCount: 3, reconnectCount: 1, credentialRefreshCount: 2, dormantTransitionCount: 1, lastFrameAtMs: 1 },
+            recentlyAuthenticated: true,
+            credentialValid: true,
+            effectiveEnrollmentState: 'connected' as SharingEnrollmentState,
+            lastConnectedAtMs: 1,
+            lastDisconnectedAtMs: null,
+            lastRenewedAtMs: 1,
+            lastErrorCode: null,
+            reconnectAttempt: 0,
+            nextReconnectAtMs: null,
+          },
           account: {
             claimed: false as boolean,
             githubUsername: null as string | null,
@@ -98,6 +113,19 @@ describe('SharingSettings', () => {
     expect(screen.getByText('Connected')).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: 'Enable lab.gd sharing' })).toBeChecked()
     expect(screen.queryByText(/setup/i)).not.toBeInTheDocument()
+  })
+
+  it('distinguishes a healthy idle connection and renders only aggregate runtime counters', () => {
+    const value = sharing()
+    value.settings.data.settings.connection.dormant = true
+    value.settings.data.settings.connection.live = false
+    value.settings.data.settings.connection.interest = { required: false, activeShares: 0, pendingPublicationOperations: 0, pendingAccountOperations: 0, recoveryPending: false, pendingClaim: false, pendingClaimExpiresAtMs: null, reasons: [] }
+    renderSettings(value)
+    expect(screen.getByText('Connected, idle')).toBeInTheDocument()
+    expect(screen.getByText(/event connection and credential renewal are paused/iu)).toBeInTheDocument()
+    expect(screen.getByText('Streams').nextElementSibling).toHaveTextContent('3')
+    expect(screen.getByText('Reconnects').nextElementSibling).toHaveTextContent('1')
+    expect(document.body.textContent).not.toContain('claim_')
   })
 
   it('shows bounded retry and recovery states', () => {

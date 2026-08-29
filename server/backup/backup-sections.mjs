@@ -179,6 +179,7 @@ export async function collectBackupSections({
       files.push(jsonEntry(JSON_SECTION_FILES.sharingIdentity, {
         projection: store.core?.database?.query('SELECT * FROM sharing_installation_projection WHERE id = 1').get() ?? null,
         accountOperations: store.core?.database?.query('SELECT * FROM sharing_account_operations ORDER BY id').all() ?? [],
+        eventLifecycle: store.core?.database?.query('SELECT * FROM sharing_event_lifecycle WHERE id = 1').get() ?? null,
         files: identityFiles.map((entry) => entry.name),
       }), ...identityFiles)
     }
@@ -388,6 +389,19 @@ export function validateSharingIdentityFiles(files) {
       throw new Error('Sharing account operation backup is invalid.')
     }
   }
+  const eventLifecycle = marker.eventLifecycle ?? null
+  if (eventLifecycle !== null) {
+    const counters = ['stream_open_count', 'reconnect_count', 'credential_refresh_count', 'dormant_transition_count']
+    const validClaim = (eventLifecycle.pending_claim_id === null && eventLifecycle.pending_claim_expires_at_ms === null)
+      || (typeof eventLifecycle.pending_claim_id === 'string' && /^[A-Za-z0-9_-]{1,128}$/u.test(eventLifecycle.pending_claim_id) && Number.isSafeInteger(eventLifecycle.pending_claim_expires_at_ms) && eventLifecycle.pending_claim_expires_at_ms > 0)
+    const validReconciliation = eventLifecycle.account_last_reconciled_at_ms === null
+      || (Number.isSafeInteger(eventLifecycle.account_last_reconciled_at_ms) && eventLifecycle.account_last_reconciled_at_ms > 0)
+    const validTimestamps = Number.isSafeInteger(eventLifecycle.created_at_ms) && eventLifecycle.created_at_ms > 0
+      && Number.isSafeInteger(eventLifecycle.updated_at_ms) && eventLifecycle.updated_at_ms > 0
+    if (eventLifecycle.id !== 1 || !validClaim || !validReconciliation || !validTimestamps || counters.some((field) => !Number.isSafeInteger(eventLifecycle[field]) || eventLifecycle[field] < 0)) {
+      throw new Error('Sharing event lifecycle backup is invalid.')
+    }
+  }
   const instanceBody = archived.get('installation-instance.json')
   const keyBody = archived.get('installation-ed25519.pem')
   const credentialsBody = archived.get('installation-credentials.json')
@@ -411,7 +425,7 @@ export function validateSharingIdentityFiles(files) {
     if (!normalizeSharingCredentials(parsed, instance.clientInstanceId)) throw new Error('Sharing installation credentials are invalid.')
   }
   if (marker.projection?.identity_hash && identityHash !== marker.projection.identity_hash) throw new Error('Sharing identity projection does not match the signing key.')
-  return { instance, identityHash, projection: marker.projection ?? null, accountOperations: marker.accountOperations ?? [] }
+  return { instance, identityHash, projection: marker.projection ?? null, accountOperations: marker.accountOperations ?? [], eventLifecycle }
 }
 
 function sharingConfigurationBackup(database) {

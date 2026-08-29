@@ -27,6 +27,19 @@ export type SharingSettings = Readonly<{
   updatedAtMs: number
 }>
 
+export type SharingEventLifecycle = Readonly<{
+  id: 1
+  pendingClaimId: string | null
+  pendingClaimExpiresAtMs: number | null
+  accountLastReconciledAtMs: number | null
+  streamOpenCount: number
+  reconnectCount: number
+  credentialRefreshCount: number
+  dormantTransitionCount: number
+  createdAtMs: number
+  updatedAtMs: number
+}>
+
 export type SharingInstallationProjection = Readonly<{
   id: 1
   clientInstanceId: string
@@ -71,6 +84,8 @@ export type SharingRemoteEventInterest = Readonly<{
   pendingPublicationOperations: number
   pendingAccountOperations: number
   recoveryPending: boolean
+  pendingClaim: boolean
+  pendingClaimExpiresAtMs: number | null
 }>
 
 export type ShareRecord = Readonly<{
@@ -151,6 +166,17 @@ const settingColumns = `
   event_last_error_code AS eventLastErrorCode,
   reconnect_attempt AS reconnectAttempt,
   next_reconnect_at_ms AS nextReconnectAtMs,
+  created_at_ms AS createdAtMs, updated_at_ms AS updatedAtMs
+`
+
+const eventLifecycleColumns = `
+  id, pending_claim_id AS pendingClaimId,
+  pending_claim_expires_at_ms AS pendingClaimExpiresAtMs,
+  account_last_reconciled_at_ms AS accountLastReconciledAtMs,
+  stream_open_count AS streamOpenCount,
+  reconnect_count AS reconnectCount,
+  credential_refresh_count AS credentialRefreshCount,
+  dormant_transition_count AS dormantTransitionCount,
   created_at_ms AS createdAtMs, updated_at_ms AS updatedAtMs
 `
 
@@ -275,8 +301,67 @@ export function createSharingRepository(context: RepositoryContext) {
     return getSettings()
   }
 
+  function getEventLifecycle(): SharingEventLifecycle {
+    const row = sqlite.query(`SELECT ${eventLifecycleColumns} FROM sharing_event_lifecycle WHERE id = 1`).get() as SharingEventLifecycle | null
+    if (!row) throw new Error('Sharing event lifecycle state is missing.')
+    return row
+  }
+
+  function incrementEventMetric(metric: 'streamOpenCount' | 'reconnectCount' | 'credentialRefreshCount' | 'dormantTransitionCount') {
+    const column = {
+      streamOpenCount: 'stream_open_count',
+      reconnectCount: 'reconnect_count',
+      credentialRefreshCount: 'credential_refresh_count',
+      dormantTransitionCount: 'dormant_transition_count',
+    }[metric]
+    sqlite.query(`UPDATE sharing_event_lifecycle SET ${column} = ${column} + 1, updated_at_ms = ? WHERE id = 1`).run(now())
+    return getEventLifecycle()
+  }
+
   function recordCredentialRenewed(atMs: number) {
-    return updateEventConnection({ lastRenewedAtMs: atMs })
+    return sqlite.transaction(() => {
+      updateEventConnection({ lastRenewedAtMs: atMs })
+      return incrementEventMetric('credentialRefreshCount')
+    })()
+  }
+
+  function savePendingAccountClaim(claimId: string, expiresAtMs: number) {
+    if (!/^[A-Za-z0-9_-]{1,128}$/u.test(claimId)) throw new Error('Sharing account claim ID is invalid.')
+    if (!Number.isSafeInteger(expiresAtMs) || expiresAtMs <= now()) throw new Error('Sharing account claim expiration is invalid.')
+    sqlite.query(`
+      UPDATE sharing_event_lifecycle
+      SET pending_claim_id = ?, pending_claim_expires_at_ms = ?, updated_at_ms = ?
+      WHERE id = 1
+    `).run(claimId, expiresAtMs, now())
+    return getEventLifecycle()
+  }
+
+  function clearPendingAccountClaim(expectedClaimId?: string) {
+    if (expectedClaimId !== undefined && !/^[A-Za-z0-9_-]{1,128}$/u.test(expectedClaimId)) throw new Error('Sharing account claim ID is invalid.')
+    sqlite.query(`
+      UPDATE sharing_event_lifecycle
+      SET pending_claim_id = NULL, pending_claim_expires_at_ms = NULL, updated_at_ms = ?
+      WHERE id = 1${expectedClaimId === undefined ? '' : ' AND pending_claim_id = ?'}
+    `).run(...(expectedClaimId === undefined ? [now()] : [now(), expectedClaimId]))
+    return getEventLifecycle()
+  }
+
+  function expirePendingAccountClaim(atMs = now()) {
+    if (!Number.isSafeInteger(atMs) || atMs <= 0) throw new Error('Sharing account claim expiration time is invalid.')
+    const result = sqlite.query(`
+      UPDATE sharing_event_lifecycle
+      SET pending_claim_id = NULL, pending_claim_expires_at_ms = NULL, updated_at_ms = ?
+      WHERE id = 1 AND pending_claim_expires_at_ms IS NOT NULL AND pending_claim_expires_at_ms <= ?
+    `).run(now(), atMs)
+    return result.changes === 1
+  }
+
+  function accountReconciliationDue(atMs: number, maximumAgeMs: number) {
+    if (!Number.isSafeInteger(atMs) || atMs <= 0 || !Number.isSafeInteger(maximumAgeMs) || maximumAgeMs <= 0) {
+      throw new Error('Sharing account reconciliation window is invalid.')
+    }
+    const last = getEventLifecycle().accountLastReconciledAtMs
+    return last === null || atMs - last >= maximumAgeMs
   }
 
   function getInstallationProjection(): SharingInstallationProjection | null {
@@ -308,6 +393,14 @@ export function createSharingRepository(context: RepositoryContext) {
       if (eventCursor !== undefined && eventCursor > getSettings().remoteEventCursor) {
         sqlite.query('UPDATE sharing_settings SET remote_event_cursor = ?, revision = revision + 1, updated_at_ms = ? WHERE id = 1').run(eventCursor, now())
       }
+      sqlite.query(`
+        UPDATE sharing_event_lifecycle
+        SET account_last_reconciled_at_ms = ?,
+            pending_claim_id = CASE WHEN ? = 1 THEN NULL ELSE pending_claim_id END,
+            pending_claim_expires_at_ms = CASE WHEN ? = 1 THEN NULL ELSE pending_claim_expires_at_ms END,
+            updated_at_ms = ?
+        WHERE id = 1
+      `).run(now(), status.claimed ? 1 : 0, status.claimed ? 1 : 0, now())
       return getInstallationProjection()!
     })()
   }
@@ -537,7 +630,8 @@ export function createSharingRepository(context: RepositoryContext) {
     return rows.map((row) => mapShare(row as Record<string, unknown>,accountClaimed))
   }
 
-  function getRemoteEventInterest(): SharingRemoteEventInterest {
+  function getRemoteEventInterest(atMs = now()): SharingRemoteEventInterest {
+    if (!Number.isSafeInteger(atMs) || atMs <= 0) throw new Error('Sharing event interest time is invalid.')
     const row = sqlite.query(`
       SELECT
         (SELECT count(*) FROM shares
@@ -549,25 +643,34 @@ export function createSharingRepository(context: RepositoryContext) {
         (SELECT count(*) FROM sharing_account_operations
           WHERE state IN ('pending','retrying')) AS pendingAccountOperations,
         (SELECT CASE WHEN recovery_state IS NULL THEN 0 ELSE 1 END
-          FROM sharing_settings WHERE id = 1) AS recoveryPending
-    `).get() as {
+          FROM sharing_settings WHERE id = 1) AS recoveryPending,
+        (SELECT CASE WHEN pending_claim_expires_at_ms > ? THEN 1 ELSE 0 END
+          FROM sharing_event_lifecycle WHERE id = 1) AS pendingClaim,
+        (SELECT pending_claim_expires_at_ms
+          FROM sharing_event_lifecycle WHERE id = 1) AS pendingClaimExpiresAtMs
+    `).get(atMs) as {
       activeShares: number
       pendingPublicationOperations: number
       pendingAccountOperations: number
       recoveryPending: number
+      pendingClaim: number
+      pendingClaimExpiresAtMs: number | null
     }
     const result = {
       activeShares: Number(row.activeShares),
       pendingPublicationOperations: Number(row.pendingPublicationOperations),
       pendingAccountOperations: Number(row.pendingAccountOperations),
       recoveryPending: row.recoveryPending === 1,
+      pendingClaim: row.pendingClaim === 1,
+      pendingClaimExpiresAtMs: row.pendingClaimExpiresAtMs,
     }
     return {
       ...result,
       required: result.activeShares > 0
         || result.pendingPublicationOperations > 0
         || result.pendingAccountOperations > 0
-        || result.recoveryPending,
+        || result.recoveryPending
+        || result.pendingClaim,
     }
   }
 
@@ -810,7 +913,13 @@ export function createSharingRepository(context: RepositoryContext) {
     setConnectionEnabled,
     updateEnrollment,
     updateEventConnection,
+    getEventLifecycle,
+    incrementEventMetric,
     recordCredentialRenewed,
+    savePendingAccountClaim,
+    clearPendingAccountClaim,
+    expirePendingAccountClaim,
+    accountReconciliationDue,
     getInstallationProjection,
     reconcileInstallationAccount,
     saveInstallationProjection,

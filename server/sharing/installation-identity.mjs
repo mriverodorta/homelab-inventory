@@ -145,11 +145,14 @@ export class SharingInstallationIdentityService {
     }
   }
 
-  async request(pathname, { method = 'GET', body = null, headers = {}, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+  async request(pathname, { method = 'GET', body = null, headers = {}, timeoutMs = REQUEST_TIMEOUT_MS, signal = null } = {}) {
     if (typeof pathname !== 'string' || !pathname.startsWith('/')) throw new Error('lab.gd request path is invalid.')
     const url = new URL(pathname, this.labGdOrigin)
     if (url.origin !== this.labGdOrigin) throw new Error('lab.gd request origin is invalid.')
     const controller = new AbortController()
+    const abort = () => controller.abort(signal?.reason)
+    if (signal?.aborted) abort()
+    else signal?.addEventListener('abort', abort, { once: true })
     const timeout = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null
     try {
       return await this.fetchImpl(url, {
@@ -160,11 +163,12 @@ export class SharingInstallationIdentityService {
       })
     } finally {
       if (timeout) clearTimeout(timeout)
+      signal?.removeEventListener('abort', abort)
     }
   }
 
-  async readiness() {
-    const response = await this.request('/readyz')
+  async readiness({ signal = null } = {}) {
+    const response = await this.request('/readyz', { signal })
     const body = await boundedJson(response)
     if (body.contractMode !== 'packages-enabled') throw new SharingUnsupportedError()
     if (body.status !== 'ready') {
@@ -174,7 +178,7 @@ export class SharingInstallationIdentityService {
       throw error
     }
     if (typeof body.publicationReady !== 'boolean') throw new SharingUnsupportedError('lab.gd publication readiness is invalid.')
-    const capabilityResponse = await this.request('/v1/capabilities')
+    const capabilityResponse = await this.request('/v1/capabilities', { signal })
     const capabilityDocument = await boundedJson(capabilityResponse)
     if (!capabilityResponse.ok) throw httpError(capabilityResponse, capabilityDocument, 'labgd-capabilities-failed')
     try {
@@ -185,8 +189,8 @@ export class SharingInstallationIdentityService {
     return { shareContractVersion: SHARE_CONTRACT_VERSION, capabilities: this.remoteCapabilities }
   }
 
-  async publicationReadiness() {
-    const response = await this.request('/readyz')
+  async publicationReadiness({ signal = null } = {}) {
+    const response = await this.request('/readyz', { signal })
     const body = await boundedJson(response)
     if (body.contractMode !== 'packages-enabled') throw new SharingUnsupportedError()
     if (body.status !== 'ready' || body.publicationReady !== true) {
@@ -201,8 +205,8 @@ export class SharingInstallationIdentityService {
     return this.remoteCapabilities ?? {}
   }
 
-  async activateInternal({ keyPath = this.privateKeyPath, promoteRecovery = false, forceRefresh = false } = {}) {
-    await this.readiness()
+  async activateInternal({ keyPath = this.privateKeyPath, promoteRecovery = false, forceRefresh = false, signal = null } = {}) {
+    await this.readiness({ signal })
     const current = await this.ensure()
     const { instance } = current
     const keys = keyPath === this.privateKeyPath ? current.keys : await this.ensureKeyPair(keyPath)
@@ -213,14 +217,14 @@ export class SharingInstallationIdentityService {
     if (!promoteRecovery && existing) {
       const expiresAtMs = Date.parse(existing.tokenExpiresAt)
       if (expiresAtMs <= this.now().getTime()) {
-        return this.challengeActivate(current, keys, { keyPath, promoteRecovery, expectedInstallationId: existing.installationId })
+        return this.challengeActivate(current, keys, { keyPath, promoteRecovery, expectedInstallationId: existing.installationId, signal })
       }
       if (forceRefresh || existing.renewalRequired || expiresAtMs <= this.now().getTime() + TOKEN_REFRESH_MARGIN_MS) {
         try {
-          return await this.renewCredentials(current, existing)
+          return await this.renewCredentials(current, existing, { signal })
         } catch (error) {
           if (error?.code !== 'authentication-failed') throw error
-          return this.challengeActivate(current, keys, { keyPath, promoteRecovery, expectedInstallationId: existing.installationId })
+          return this.challengeActivate(current, keys, { keyPath, promoteRecovery, expectedInstallationId: existing.installationId, signal })
         }
       }
       this.repository.saveInstallationProjection({
@@ -239,15 +243,17 @@ export class SharingInstallationIdentityService {
       keyPath,
       promoteRecovery,
       expectedInstallationId: existing?.installationId ?? current.projection.remoteInstallationId,
+      signal,
     })
   }
 
-  async challengeActivate(current, keys, { keyPath, promoteRecovery, expectedInstallationId = null }) {
+  async challengeActivate(current, keys, { keyPath, promoteRecovery, expectedInstallationId = null, signal = null }) {
     const { instance } = current
     const challengeResponse = await this.request('/v1/installations/challenge', {
       method: 'POST',
       body: JSON.stringify({ clientInstanceId: instance.clientInstanceId }),
       headers: { 'content-type': 'application/json' },
+      signal,
     })
     const challenge = await boundedJson(challengeResponse)
     if (!challengeResponse.ok || typeof challenge.value !== 'string') throw httpError(challengeResponse, challenge, 'labgd-challenge-failed')
@@ -260,6 +266,7 @@ export class SharingInstallationIdentityService {
         signature: activationSignature(challenge.value, instance.clientInstanceId, keys.privateKey),
       }),
       headers: { 'content-type': 'application/json' },
+      signal,
     })
     const activation = await boundedJson(activationResponse)
     if (activationResponse.status === 409 && activation.status === 'recovery-pending') {
@@ -315,7 +322,7 @@ export class SharingInstallationIdentityService {
     return credentials
   }
 
-  async renewCredentials(current, existing) {
+  async renewCredentials(current, existing, { signal = null } = {}) {
     if (!existing.scopes.includes('token:renew')) throw new SharingUnsupportedError('Legacy lab.gd credentials cannot be renewed.')
     const body = new TextEncoder().encode(JSON.stringify({ scopes: [...SHARING_TOKEN_SCOPES] }))
     const response = await this.request('/v1/installations/renew', {
@@ -325,6 +332,7 @@ export class SharingInstallationIdentityService {
         'content-type': 'application/json',
         ...signedRequestHeaders({ token: existing.token, body, scope: 'token:renew', privateKey: current.keys.privateKey, now: this.now() }),
       },
+      signal,
     })
     const result = await boundedJson(response)
     if (!response.ok || typeof result.token !== 'string' || result.token.length < 16 || result.token.length > 4096) throw httpError(response, result, 'labgd-renewal-failed')
@@ -359,7 +367,8 @@ export class SharingInstallationIdentityService {
     return credentials
   }
 
-  activate() {
+  activate({ signal = null } = {}) {
+    if (signal) return this.activateInternal({ signal })
     if (!this.inFlight) {
       const operation = this.activateInternal()
       const tracked = operation.finally(() => {
@@ -370,12 +379,12 @@ export class SharingInstallationIdentityService {
     return this.inFlight
   }
 
-  async signedFetch(pathname, { method = 'POST', body = new Uint8Array(), scope = 'publication:write', headers = {}, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
-    if (scope === 'publication:write') await this.publicationReadiness()
+  async signedFetch(pathname, { method = 'POST', body = new Uint8Array(), scope = 'publication:write', headers = {}, timeoutMs = REQUEST_TIMEOUT_MS, signal = null } = {}) {
+    if (scope === 'publication:write') await this.publicationReadiness({ signal })
     const { instance, keys } = await this.ensure()
     let credentials = await this.readCredentials(instance)
-    if (!credentials) credentials = await this.activate()
-    if (credentials.renewalRequired || Date.parse(credentials.tokenExpiresAt) <= this.now().getTime() + TOKEN_REFRESH_MARGIN_MS || !credentials.scopes.includes(scope)) credentials = await this.activateInternal({ forceRefresh: true })
+    if (!credentials) credentials = await this.activate({ signal })
+    if (credentials.renewalRequired || Date.parse(credentials.tokenExpiresAt) <= this.now().getTime() + TOKEN_REFRESH_MARGIN_MS || !credentials.scopes.includes(scope)) credentials = await this.activateInternal({ forceRefresh: true, signal })
     if (!credentials.scopes.includes(scope)) {
       const error = new Error(`lab.gd did not grant the required ${scope} scope.`)
       error.code = 'sharing-scope-unavailable'
@@ -391,6 +400,7 @@ export class SharingInstallationIdentityService {
       body: bytes,
       headers: { ...headers, ...signedRequestHeaders({ token: credentials.token, body: bytes, scope, privateKey: keys.privateKey, now: this.now() }) },
       timeoutMs,
+      signal,
     })
   }
 
@@ -486,13 +496,14 @@ export class SharingInstallationIdentityService {
     return { claimId: result.claimId, userCode: result.userCode, verificationUrl: result.verificationUrl, expiresAt: result.expiresAt, state: result.state }
   }
 
-  async accountStatus() {
+  async accountStatus({ signal = null } = {}) {
     if (this.getCapabilities().installationAccountStatus !== true) return null
     const version2 = this.getCapabilities().accountUnlink === true
     const response = await this.signedFetch(version2 ? '/v1/installations/account-status-v2' : '/v1/installations/account-status', {
       method: 'GET',
       body: new Uint8Array(),
       scope: 'claim:create',
+      signal,
     })
     const result = await boundedJson(response)
     const usernameIsValid = result.githubUsername === null
@@ -542,8 +553,8 @@ export class SharingInstallationIdentityService {
     return result
   }
 
-  async reconcileAccountStatus(eventCursor) {
-    const status = await this.accountStatus()
+  async reconcileAccountStatus(eventCursor, { signal = null } = {}) {
+    const status = await this.accountStatus({ signal })
     if (status) this.repository.reconcileInstallationAccount(status, eventCursor)
     return status
   }

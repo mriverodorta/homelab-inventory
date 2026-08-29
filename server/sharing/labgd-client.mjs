@@ -7,7 +7,7 @@ export class LabGdPublicationClient {
     this.timeoutMs = timeoutMs
   }
 
-  async request(pathname, { method = 'POST', body = {}, raw = false, headers = {}, scope = 'publication:write', timeoutMs = this.timeoutMs } = {}) {
+  async request(pathname, { method = 'POST', body = {}, raw = false, headers = {}, scope = 'publication:write', timeoutMs = this.timeoutMs, signal = null } = {}) {
     const bytes = raw
       ? body
       : new TextEncoder().encode(JSON.stringify(body))
@@ -17,6 +17,7 @@ export class LabGdPublicationClient {
       scope,
       headers: raw ? headers : { 'content-type': 'application/json', ...headers },
       timeoutMs,
+      signal,
     })
     return response
   }
@@ -53,11 +54,12 @@ export class LabGdPublicationClient {
     return result
   }
 
-  async events(cursor = 0) {
+  async events(cursor = 0, { signal = null } = {}) {
     if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error('lab.gd event cursor is invalid.')
     const response = await this.request('/v1/installations/events', {
       method: 'GET', body: new Uint8Array(), raw: true, scope: 'events:read', timeoutMs: 0,
       headers: cursor > 0 ? { 'last-event-id': String(cursor) } : {},
+      signal,
     })
     if (!response.ok || !String(response.headers.get('content-type') ?? '').toLowerCase().startsWith('text/event-stream')) {
       throw remoteError(response, await boundedJson(response), 'sharing-events-failed')

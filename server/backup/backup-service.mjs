@@ -553,6 +553,10 @@ export function replaceSharingIdentityState(database, identity) {
   database.transaction(() => {
     database.query('DELETE FROM sharing_account_operations').run()
     database.query('DELETE FROM sharing_installation_projection WHERE id = 1').run()
+    if (identity.eventLifecycle) {
+      database.query('DELETE FROM sharing_event_lifecycle WHERE id = 1').run()
+      insertArchivedRow(database, 'sharing_event_lifecycle', identity.eventLifecycle)
+    }
     if (identity.projection) insertArchivedRow(database, 'sharing_installation_projection', identity.projection)
     for (const operation of identity.accountOperations) {
       const row = { ...operation }

@@ -200,10 +200,22 @@ describe('backup section ownership', () => {
         account_binding_revision: 3,
       }
       const accountOperations = [{ id: 1, share_disposition: 'keep', state: 'succeeded' }]
+      const eventLifecycle = {
+        id: 1,
+        pending_claim_id: 'claim_123',
+        pending_claim_expires_at_ms: Date.parse('2026-08-22T12:10:00.000Z'),
+        account_last_reconciled_at_ms: Date.parse('2026-08-22T12:05:00.000Z'),
+        stream_open_count: 2,
+        reconnect_count: 1,
+        credential_refresh_count: 1,
+        dormant_transition_count: 1,
+        created_at_ms: 1,
+        updated_at_ms: 2,
+      }
       const store = {
         dataDir,
         snapshotStores: async () => stores(),
-        core: { database: { query: (sql) => sql.includes('sharing_account_operations') ? ({ all: () => accountOperations }) : ({ get: () => projection }) } },
+        core: { database: { query: (sql) => sql.includes('sharing_account_operations') ? ({ all: () => accountOperations }) : sql.includes('sharing_event_lifecycle') ? ({ get: () => eventLifecycle }) : ({ get: () => projection }) } },
       }
       const selected = await collectBackupSections({ store, sections: ['sharingIdentity'] })
       const files = new Map(selected.files.map((file) => [file.name, file.body]))
@@ -217,6 +229,7 @@ describe('backup section ownership', () => {
       expect(validateSharingIdentityFiles(files).instance.clientInstanceId).toBe(clientInstanceId)
       expect(JSON.parse(files.get('sections/sharing-identity.json').toString()).projection).toEqual(projection)
       expect(JSON.parse(files.get('sections/sharing-identity.json').toString()).accountOperations).toEqual(accountOperations)
+      expect(validateSharingIdentityFiles(files).eventLifecycle).toEqual(eventLifecycle)
       const configurationOnly = await collectBackupSections({
         store: { dataDir, snapshotStores: async () => stores() },
         sections: ['sharingConfiguration'],

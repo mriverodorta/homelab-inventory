@@ -702,12 +702,15 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'lab.gd credentials now renew before expiration and the signed event stream recovers across outages and application restarts without changing the installation UUID or signing key.',
     'Expired sharing credentials with no live or recently authenticated event stream now show a retrying connection instead of remaining connected indefinitely.',
     'lab.gd event streaming now sleeps when there are no active shares or account operations, then resumes automatically for publication, claiming, recovery, or unlinking without changing the installation identity.',
+    'Pending lab.gd account claims now survive application restarts, silent event streams recover through a heartbeat watchdog, and remote requests stop immediately when the last share or account operation finishes.',
+    'Sharing settings now identifies a healthy connected-but-idle installation and shows privacy-safe aggregate event runtime counters.',
   ],
   notes: [
     'Local releases now reuse checksum-verified portable WASM and Agent artifacts plus verified Rust-check receipts when their complete inputs are unchanged, avoiding redundant Rust and Go compilation without retaining compiler caches.',
     'Release receipts now record critical-path timings and validate the staged HTML shell, immutable frontend assets, bootstrap data, and server-sent event stream before approval.',
     'Deployment verification and exact OCI publication now run entirely on the maintainer workstation, while GitHub retains pull-request CI plus scheduled CodeQL and published-image monitoring.',
     'Local validation now runs independent test families concurrently with bounded worker pressure, proves locally loaded images against exact OCI config and rootfs identities, and retains only a cache-free BuildKit runtime between ARM64 approval and AMD64 validation.',
+    'Installation account status is refreshed on authoritative account events, explicit reconciliation, and a six-hour stale-state boundary rather than on every event reconnect.',
   ],
 }
 

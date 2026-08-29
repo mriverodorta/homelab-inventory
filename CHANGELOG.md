@@ -11,9 +11,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Demo, test, staging, candidate-image, and container-security runtimes now disable LabGD, Registry identity and contributions, Registry refresh, and update checks through one fail-closed policy; isolated smoke containers have no network or host port and fail if external identity files are created.
 - LabGD credentials now renew proactively before expiration, the installation event stream reconnects with bounded persisted backoff across network failures and restarts, and stale expired connections no longer appear connected while retaining the same installation UUID and Ed25519 key.
 - LabGD event streaming is now demand-driven: installations with no active shares or account/recovery work remain enrolled but dormant, with no SSE reconnect or credential-renewal loop until remote events are needed again.
+- LabGD event work now cancels immediately when its last durable interest disappears, resumes pending account claims after restart, and reconnects after a silent event stream without exposing claim codes or credentials.
+- Sharing settings now distinguishes a healthy idle connection from an active event stream and reports privacy-safe aggregate stream, reconnect, renewal, and idle-transition counters.
 
 ### Changed
 
+- LabGD account status is reconciled on account events, explicit requests, and a six-hour stale-state boundary instead of on every event-stream reconnect.
 - Local releases now reuse checksum-verified portable WASM and Agent bundles when their complete inputs are unchanged, while verified Rust format, Clippy, and test receipts avoid recompilation without retaining Cargo or Docker compiler caches.
 - Release preparation records phase timings and probes the exact staged image's HTML shell, immutable assets, bootstrap response, health metadata, and server-sent event stream before approval.
 - Deployment-triggered validation now runs locally; GitHub Actions remains available for pull requests, scheduled CodeQL analysis, and scheduled monitoring of published Docker images.

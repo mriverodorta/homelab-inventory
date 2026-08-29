@@ -32,6 +32,36 @@ export const sharingSettings = sqliteTable('sharing_settings', {
   check('sharing_settings_reconnect_attempt_check', sql`${table.reconnectAttempt} >= 0`),
 ])
 
+export const sharingEventLifecycle = sqliteTable('sharing_event_lifecycle', {
+  id: integer('id').primaryKey(),
+  pendingClaimId: text('pending_claim_id'),
+  pendingClaimExpiresAtMs: integer('pending_claim_expires_at_ms'),
+  accountLastReconciledAtMs: integer('account_last_reconciled_at_ms'),
+  streamOpenCount: integer('stream_open_count').notNull().default(0),
+  reconnectCount: integer('reconnect_count').notNull().default(0),
+  credentialRefreshCount: integer('credential_refresh_count').notNull().default(0),
+  dormantTransitionCount: integer('dormant_transition_count').notNull().default(0),
+  createdAtMs: integer('created_at_ms').notNull(),
+  updatedAtMs: integer('updated_at_ms').notNull(),
+}, (table) => [
+  check('sharing_event_lifecycle_singleton_check', sql`${table.id} = 1`),
+  check('sharing_event_lifecycle_claim_check', sql`
+    (${table.pendingClaimId} IS NULL AND ${table.pendingClaimExpiresAtMs} IS NULL)
+    OR (
+      ${table.pendingClaimId} IS NOT NULL
+      AND length(${table.pendingClaimId}) BETWEEN 1 AND 128
+      AND ${table.pendingClaimExpiresAtMs} > 0
+    )
+  `),
+  check('sharing_event_lifecycle_reconciled_check', sql`${table.accountLastReconciledAtMs} IS NULL OR ${table.accountLastReconciledAtMs} > 0`),
+  check('sharing_event_lifecycle_counter_check', sql`
+    ${table.streamOpenCount} >= 0
+    AND ${table.reconnectCount} >= 0
+    AND ${table.credentialRefreshCount} >= 0
+    AND ${table.dormantTransitionCount} >= 0
+  `),
+])
+
 export const sharingInstallationProjection = sqliteTable('sharing_installation_projection', {
   id: integer('id').primaryKey(),
   clientInstanceId: text('client_instance_id').notNull(),

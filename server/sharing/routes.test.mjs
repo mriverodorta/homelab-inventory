@@ -144,12 +144,12 @@ describe('sharing routes', () => {
       expiresAt: '2026-08-28T20:00:00.000Z',
       state: 'pending',
     }
-    const holdClaimUntil = vi.fn()
+    const holdClaim = vi.fn()
     const baseUrl = await server({
       repository: { getSettings: () => ({ revision: 1, connectionEnabled: true, enrollmentState: 'connected' }) },
       publicationService: {},
       identityService: { createClaimDevice: vi.fn(async () => claim) },
-      eventCoordinator: { holdClaimUntil, status: () => ({ dormant: true, effectiveEnrollmentState: 'connected' }) },
+      eventCoordinator: { holdClaim, status: () => ({ dormant: true, effectiveEnrollmentState: 'connected' }) },
       effectiveEnabled: true,
     })
 
@@ -157,7 +157,7 @@ describe('sharing routes', () => {
 
     expect(response.status).toBe(201)
     expect(await response.json()).toEqual(claim)
-    expect(holdClaimUntil).toHaveBeenCalledWith(claim.expiresAt)
+    expect(holdClaim).toHaveBeenCalledWith({ claimId: claim.claimId, expiresAt: claim.expiresAt })
   })
 
   it('projects expired disconnected credentials as retrying instead of indefinitely connected', async () => {

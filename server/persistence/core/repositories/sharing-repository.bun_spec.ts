@@ -314,6 +314,8 @@ describe('sharing repository', () => {
         pendingPublicationOperations: 0,
         pendingAccountOperations: 0,
         recoveryPending: false,
+        pendingClaim: false,
+        pendingClaimExpiresAtMs: null,
       })
 
       const share = repository.createShare({
@@ -353,6 +355,38 @@ describe('sharing repository', () => {
       expect(repository.getRemoteEventInterest()).toMatchObject({ required: true, recoveryPending: true })
       repository.updateEnrollment({ enrollmentState: repository.getSettings().enrollmentState, recoveryState: null })
       expect(repository.getRemoteEventInterest().required).toBe(false)
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('persists bounded claim interest, reconciliation cadence, and privacy-safe counters', async () => {
+    const { handle, repository } = await fixture()
+    try {
+      const now = Date.parse('2026-08-22T12:00:00.000Z')
+      const expiresAt = now + 60_000
+      repository.savePendingAccountClaim('claim_opaque_1', expiresAt)
+      expect(repository.getRemoteEventInterest(now)).toMatchObject({ required: true, pendingClaim: true, pendingClaimExpiresAtMs: expiresAt })
+
+      const restarted = createSharingRepository(createRepositoryContext(handle.database, () => now))
+      expect(restarted.getRemoteEventInterest(now)).toMatchObject({ required: true, pendingClaim: true })
+      expect(restarted.expirePendingAccountClaim(expiresAt)).toBe(true)
+      expect(restarted.getRemoteEventInterest(expiresAt)).toMatchObject({ required: false, pendingClaim: false })
+
+      expect(restarted.accountReconciliationDue(now, 6 * 60 * 60_000)).toBe(true)
+      restarted.incrementEventMetric('streamOpenCount')
+      restarted.incrementEventMetric('reconnectCount')
+      restarted.recordCredentialRenewed(now)
+      restarted.incrementEventMetric('dormantTransitionCount')
+      expect(restarted.getEventLifecycle()).toMatchObject({
+        pendingClaimId: null,
+        accountLastReconciledAtMs: null,
+        streamOpenCount: 1,
+        reconnectCount: 1,
+        credentialRefreshCount: 1,
+        dormantTransitionCount: 1,
+      })
+      expect(handle.database.query("SELECT count(*) AS count FROM sqlite_master WHERE sql LIKE '%user_code%'").get()).toEqual({ count: 0 })
     } finally {
       closeManagedDatabase(handle)
     }

@@ -54,11 +54,24 @@ describe('sharing identity restore', () => {
         created_at_ms: 1,
         updated_at_ms: 2,
       }
+      const eventLifecycle = {
+        id: 1,
+        pending_claim_id: 'claim_123',
+        pending_claim_expires_at_ms: 500,
+        account_last_reconciled_at_ms: 100,
+        stream_open_count: 4,
+        reconnect_count: 3,
+        credential_refresh_count: 2,
+        dormant_transition_count: 1,
+        created_at_ms: 1,
+        updated_at_ms: 2,
+      }
 
-      replaceSharingIdentityState(handle.database, { projection, accountOperations: [operation] })
+      replaceSharingIdentityState(handle.database, { projection, accountOperations: [operation], eventLifecycle })
 
       expect(handle.database.query('SELECT account_binding_revision, github_username FROM sharing_installation_projection').get()).toEqual({ account_binding_revision: 3, github_username: 'maikeldorta' })
       expect(handle.database.query('SELECT client_attempt_id, remote_idempotency_key, state FROM sharing_account_operations').get()).toEqual({ client_attempt_id: operation.client_attempt_id, remote_idempotency_key: operation.remote_idempotency_key, state: 'retrying' })
+      expect(handle.database.query('SELECT pending_claim_id, stream_open_count, reconnect_count FROM sharing_event_lifecycle').get()).toEqual({ pending_claim_id: 'claim_123', stream_open_count: 4, reconnect_count: 3 })
     } finally {
       closeManagedDatabase(handle)
     }
