@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto'
-import { STAGING_CONTAINER, STAGING_NETWORK, STAGING_PORT } from './config.mjs'
+import {
+  STAGING_CONTAINER,
+  STAGING_INGRESS_CONTAINER,
+  STAGING_INGRESS_NETWORK,
+  STAGING_NETWORK,
+  STAGING_PORT,
+} from './config.mjs'
 import { run } from './process.mjs'
 import { validateStagingData } from './sanitize.mjs'
 import { ISOLATED_RUNTIME_ENVIRONMENT } from '../../server/external-access-policy.mjs'
@@ -18,12 +24,58 @@ export function stagingRunCommand(candidate, paths) {
     '--platform', candidate.platform,
     '--restart', 'no',
     '--network', STAGING_NETWORK,
-    '--publish', `127.0.0.1:${STAGING_PORT}:8798`,
     '--mount', `type=bind,source=${paths.currentDataDir},target=/data`,
   ]
   for (const [name, value] of Object.entries(STAGING_ENVIRONMENT)) command.push('--env', `${name}=${value}`)
   command.push(candidate.image)
   return command
+}
+
+const STAGING_INGRESS_SCRIPT = `
+const targetOrigin = 'http://${STAGING_CONTAINER}:8798'
+Bun.serve({
+  hostname: '0.0.0.0',
+  port: ${STAGING_PORT},
+  async fetch(request) {
+    const source = new URL(request.url)
+    const headers = new Headers(request.headers)
+    headers.delete('host')
+    headers.delete('connection')
+    headers.set('accept-encoding', 'identity')
+    try {
+      const response = await fetch(new URL(source.pathname + source.search, targetOrigin), {
+        method: request.method,
+        headers,
+        body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
+        redirect: 'manual',
+      })
+      const responseHeaders = new Headers(response.headers)
+      responseHeaders.delete('content-encoding')
+      responseHeaders.delete('content-length')
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+      })
+    } catch {
+      return new Response('Staging service unavailable.', { status: 502 })
+    }
+  },
+})
+`.trim()
+
+export function stagingIngressRunCommand(candidate) {
+  return [
+    'docker', 'run', '--detach', '--name', STAGING_INGRESS_CONTAINER,
+    '--platform', candidate.platform,
+    '--restart', 'no',
+    '--no-healthcheck',
+    '--network', STAGING_INGRESS_NETWORK,
+    '--publish', `127.0.0.1:${STAGING_PORT}:${STAGING_PORT}`,
+    '--entrypoint', 'bun',
+    candidate.image,
+    '-e', STAGING_INGRESS_SCRIPT,
+  ]
 }
 
 async function waitForStagingHealth({ timeoutMs = 120_000 } = {}) {
@@ -41,14 +93,19 @@ async function waitForStagingHealth({ timeoutMs = 120_000 } = {}) {
 }
 
 export async function stopStaging() {
+  await run(['docker', 'rm', '--force', STAGING_INGRESS_CONTAINER], { allowFailure: true, log: false })
   await run(['docker', 'rm', '--force', STAGING_CONTAINER], { allowFailure: true, log: false })
+  await run(['docker', 'network', 'rm', STAGING_INGRESS_NETWORK], { allowFailure: true, log: false })
   await run(['docker', 'network', 'rm', STAGING_NETWORK], { allowFailure: true, log: false })
 }
 
 export async function deployStaging(candidate, paths) {
   await stopStaging()
   await run(['docker', 'network', 'create', '--driver', 'bridge', '--internal', STAGING_NETWORK])
+  await run(['docker', 'network', 'create', '--driver', 'bridge', STAGING_INGRESS_NETWORK])
   await run(stagingRunCommand(candidate, paths))
+  await run(stagingIngressRunCommand(candidate))
+  await run(['docker', 'network', 'connect', STAGING_NETWORK, STAGING_INGRESS_CONTAINER])
   return await waitForStagingHealth()
 }
 
@@ -114,19 +171,41 @@ function inspectMount(inspect, paths) {
 }
 
 export async function checkStaging(candidate, paths) {
-  const { stdout } = await run(['docker', 'inspect', STAGING_CONTAINER], { capture: true, log: false })
+  const [{ stdout }, { stdout: ingressOutput }] = await Promise.all([
+    run(['docker', 'inspect', STAGING_CONTAINER], { capture: true, log: false }),
+    run(['docker', 'inspect', STAGING_INGRESS_CONTAINER], { capture: true, log: false }),
+  ])
   const inspect = JSON.parse(stdout)[0]
+  const ingress = JSON.parse(ingressOutput)[0]
   if (!inspect?.State?.Running) throw new Error('Staging container is not running.')
   if (inspect.Config?.Image !== candidate.image) throw new Error('Staging is not running the approved candidate image.')
-  const binding = inspect.NetworkSettings?.Ports?.['8798/tcp']?.[0]
+  if (Object.values(inspect.NetworkSettings?.Ports ?? {}).some((bindings) => Array.isArray(bindings) && bindings.length > 0)) {
+    throw new Error('The outbound-isolated staging container must not publish host ports.')
+  }
+  if (!ingress?.State?.Running || ingress.Config?.Image !== candidate.image) {
+    throw new Error('Staging ingress is not running the exact candidate image.')
+  }
+  const binding = ingress.NetworkSettings?.Ports?.[`${STAGING_PORT}/tcp`]?.[0]
   if (binding?.HostIp !== '127.0.0.1' || Number(binding.HostPort) !== STAGING_PORT) {
     throw new Error('Staging is not bound exclusively to 127.0.0.1:8799.')
   }
   if (!inspectMount(inspect, paths)) throw new Error('Staging is not using the current sanitized data snapshot.')
   const { stdout: networkOutput } = await run(['docker', 'network', 'inspect', STAGING_NETWORK], { capture: true, log: false })
   const network = JSON.parse(networkOutput)[0]
-  if (network?.Internal !== true || !inspect.NetworkSettings?.Networks?.[STAGING_NETWORK]) {
+  const applicationNetworks = Object.keys(inspect.NetworkSettings?.Networks ?? {})
+  if (network?.Internal !== true
+    || applicationNetworks.length !== 1
+    || applicationNetworks[0] !== STAGING_NETWORK) {
     throw new Error('Staging is not attached to its outbound-isolated Docker network.')
+  }
+  const { stdout: ingressNetworkOutput } = await run([
+    'docker', 'network', 'inspect', STAGING_INGRESS_NETWORK,
+  ], { capture: true, log: false })
+  const ingressNetwork = JSON.parse(ingressNetworkOutput)[0]
+  if (ingressNetwork?.Internal === true
+    || !ingress.NetworkSettings?.Networks?.[STAGING_NETWORK]
+    || !ingress.NetworkSettings?.Networks?.[STAGING_INGRESS_NETWORK]) {
+    throw new Error('Staging ingress network topology is invalid.')
   }
   const environment = Object.fromEntries((inspect.Config?.Env ?? []).map((entry) => entry.split(/=(.*)/s).slice(0, 2)))
   for (const [name, expected] of Object.entries(STAGING_ENVIRONMENT)) {

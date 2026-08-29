@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import { createApproval, probeStagingRuntime, stagingRunCommand } from './staging.mjs'
+import {
+  createApproval,
+  probeStagingRuntime,
+  stagingIngressRunCommand,
+  stagingRunCommand,
+} from './staging.mjs'
 
 const candidate = {
   platform: 'linux/arm64',
@@ -10,18 +15,34 @@ const candidate = {
 }
 
 describe('local release staging', () => {
-  test('runs the exact ARM64 candidate on loopback with isolated staging policy', () => {
+  test('keeps the staged application on the outbound-isolated network', () => {
     const command = stagingRunCommand(candidate, { currentDataDir: '/private/staging data/current' })
     expect(command).toContain(candidate.image)
-    expect(command).toContain('127.0.0.1:8799:8798')
+    expect(command).not.toContain('--publish')
     expect(command).toContain('type=bind,source=/private/staging data/current,target=/data')
     expect(command).toContain('homelab-inventory-staging-isolated')
+    expect(command.filter((entry) => entry === '--network')).toHaveLength(1)
     expect(command).toContain('APP_MODE=staging')
     expect(command).toContain('UPDATE_CHECK_ENABLED=false')
     expect(command).toContain('REGISTRY_REFRESH_INTERVAL_MS=0')
     expect(command).toContain('LABGD_ENABLED=false')
     expect(command).toContain('REGISTRY_IDENTITY_ENABLED=false')
     expect(command).toContain('REGISTRY_CONTRIBUTION_ENABLED=false')
+    expect(command).not.toContain('--privileged')
+  })
+
+  test('uses a loopback-only fixed-target ingress without attaching the app to an egress network', () => {
+    const command = stagingIngressRunCommand(candidate)
+    expect(command).toContain(candidate.image)
+    expect(command).toContain('127.0.0.1:8799:8799')
+    expect(command).toContain('homelab-inventory-staging-ingress')
+    expect(command).toContain('--no-healthcheck')
+    expect(command).toContain('--entrypoint')
+    expect(command).toContain('bun')
+    expect(command.at(-1)).toContain("targetOrigin = 'http://homelab-inventory-staging:8798'")
+    expect(command.at(-1)).toContain("headers.set('accept-encoding', 'identity')")
+    expect(command.at(-1)).toContain("responseHeaders.delete('content-encoding')")
+    expect(command.at(-1)).not.toContain('request.headers.get')
     expect(command).not.toContain('--privileged')
   })
 
