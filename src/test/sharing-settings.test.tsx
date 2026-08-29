@@ -69,6 +69,7 @@ function sharing(overrides: Record<string, unknown> = {}) {
             githubUsername: null as string | null,
             claimedAtMs: null as number | null,
           },
+          publicationReconciliation: { blockedCount: 0, errorCode: null as 'sharing-publication-reconciliation-required' | null },
         },
       },
     },
@@ -142,6 +143,18 @@ describe('SharingSettings', () => {
     renderSettings(recovery)
     expect(screen.getByText('Owner approval required')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Resume recovery' })).toBeInTheDocument()
+  })
+
+  it('shows a privacy-safe legacy publication reconciliation warning', () => {
+    const value = sharing()
+    value.settings.data.settings.publicationReconciliation = {
+      blockedCount: 2,
+      errorCode: 'sharing-publication-reconciliation-required',
+    }
+    renderSettings(value)
+    expect(screen.getByText(/2 legacy publication operations paused/iu)).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('idempotency')
+    expect(document.body.textContent).not.toContain('manifest')
   })
 
   it('hides publication commands from users without publish permission', () => {

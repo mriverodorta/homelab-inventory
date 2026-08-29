@@ -219,6 +219,7 @@ describe('sharing repository', () => {
       const manifestJson = JSON.stringify({ contractVersion: 1 })
       const revisionId = repository.persistRevision({ shareId: share.id, revision: 1, manifestHash: 'd'.repeat(64), manifestJson, blobs: [] })
       const operation = repository.enqueueOperation({ shareId: share.id, localRevisionId: revisionId, idempotencyKey: 'durable-publish-1', kind: 'publish', expectedRemoteRevision: 0 })
+      expect(operation).toMatchObject({ revisionIntentProvenance: 'exact', predatesMigration0035: 0 })
       repository.updateOperation(operation.id, { state: 'failed', attemptCount: 8, remoteOperationId: 132, lastErrorCode: 'registry-definition-unavailable' })
 
       const restarted = createSharingRepository(createRepositoryContext(handle.database, () => Date.parse('2026-08-22T13:00:00.000Z')))
@@ -233,6 +234,72 @@ describe('sharing repository', () => {
 
       restarted.updateOperation(operation.id, { state: 'failed', lastErrorCode: 'sharing-publication-integrity-failed' })
       expect(() => restarted.enqueueOperation({ shareId: share.id, localRevisionId: revisionId, idempotencyKey: 'durable-publish-1', kind: 'publish', expectedRemoteRevision: 0, retryIdenticalFailed: true })).toThrow('not eligible')
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('quarantines ambiguous publication intent from execution, explicit retry, and remote mutation', async () => {
+    const { handle, repository } = await fixture()
+    try {
+      const share = repository.createShare({ projectId: 1, title: 'Quarantined publication', mutability: 'replaceable', syncMode: 'manual', visibility: 'unlisted', views: [{ workspaceId: 1, viewType: 'systems' }] })
+      const revisionId = repository.persistRevision({ shareId: share.id, revision: 1, manifestHash: 'e'.repeat(64), manifestJson: '{}', blobs: [] })
+      const quarantined = repository.enqueueOperation({ shareId: share.id, localRevisionId: revisionId, idempotencyKey: 'quarantined-publish', kind: 'publish', expectedRemoteRevision: 0 })
+      const runnable = repository.enqueueOperation({ shareId: share.id, idempotencyKey: 'runnable-delete', kind: 'delete', availableAtMs: Date.parse('2026-08-22T12:05:00.000Z') })
+      handle.database.query(`
+        UPDATE share_publication_operations
+        SET state = 'retrying', attempt_count = 9, available_at_ms = ?,
+          remote_operation_id = 132, expected_remote_revision = NULL,
+          revision_intent_provenance = 'reconciliation-required',
+          predates_migration_0035 = 1
+        WHERE id = ?
+      `).run(Date.parse('2026-08-22T12:00:00.000Z'), quarantined.id)
+      const evidence = handle.database.query('SELECT * FROM share_publication_operations WHERE id = ?').get(quarantined.id)
+
+      expect(repository.nextOperation()).toBeNull()
+      expect(repository.nextOperationAvailableAt()).toBe(Date.parse('2026-08-22T12:05:00.000Z'))
+      expect(repository.getPublicationReconciliationStatus()).toEqual({
+        blockedCount: 1,
+        errorCode: 'sharing-publication-reconciliation-required',
+      })
+      expect(repository.publicationMigrationAudit()).toEqual(expect.arrayContaining([
+        {
+          kind: 'publish',
+          state: 'retrying',
+          remoteOperationPresent: true,
+          expectedRevisionPresent: false,
+          predatesMigration0035: true,
+          count: 1,
+        },
+        {
+          kind: 'delete',
+          state: 'queued',
+          remoteOperationPresent: false,
+          expectedRevisionPresent: false,
+          predatesMigration0035: false,
+          count: 1,
+        },
+      ]))
+
+      for (const action of [
+        () => repository.enqueueOperation({ shareId: share.id, localRevisionId: revisionId, idempotencyKey: 'quarantined-publish', kind: 'publish', expectedRemoteRevision: 0, retryIdenticalFailed: true }),
+        () => repository.updateOperation(quarantined.id, { state: 'retrying', availableAtMs: 1 }),
+        () => repository.recordRemoteStage(quarantined.id, { operationId: 132, state: 'staged', failureCode: null, missingHashes: [], activationResult: null }),
+        () => repository.completePublication({ shareId: share.id, operationId: quarantined.id, remoteOperationId: 132, remotePublicId: 'quarantined_share', resultingRemoteRevision: 1, manifestHash: 'e'.repeat(64), activationRevisionId: 1 }),
+      ]) {
+        expect(action).toThrow('controlled local reconciliation')
+        try {
+          action()
+        } catch (error) {
+          expect(error).toMatchObject({ code: 'sharing-publication-reconciliation-required', status: 409 })
+        }
+      }
+
+      expect(handle.database.query('SELECT * FROM share_publication_operations WHERE id = ?').get(quarantined.id)).toEqual(evidence)
+      const restarted = createSharingRepository(createRepositoryContext(handle.database, () => Date.parse('2026-08-22T14:00:00.000Z')))
+      expect(restarted.nextOperation()).toMatchObject({ id: runnable.id, kind: 'delete' })
+      expect(restarted.getPublicationReconciliationStatus()).toEqual({ blockedCount: 1, errorCode: 'sharing-publication-reconciliation-required' })
+      expect(handle.database.query('SELECT * FROM share_publication_operations WHERE id = ?').get(quarantined.id)).toEqual(evidence)
     } finally {
       closeManagedDatabase(handle)
     }
@@ -381,6 +448,7 @@ describe('sharing repository', () => {
         required: false,
         activeShares: 0,
         pendingPublicationOperations: 0,
+        reconciliationRequired: 0,
         pendingAccountOperations: 0,
         recoveryPending: false,
         pendingClaim: false,

@@ -1,10 +1,14 @@
 import { classifyPublicationFailure, publicationRetryDelay } from './publication-retry-policy.mjs'
 
 export class SharingPublicationCoordinator {
-  constructor({ repository, publicationService, effectiveEnabled = true, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout }) {
+  constructor({ repository, publicationService, effectiveEnabled = true, maxOperationsPerTurn = 8, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout }) {
+    if (!Number.isSafeInteger(maxOperationsPerTurn) || maxOperationsPerTurn < 1 || maxOperationsPerTurn > 100) {
+      throw new Error('Sharing publication batch size is invalid.')
+    }
     this.repository = repository
     this.publicationService = publicationService
     this.effectiveEnabled = effectiveEnabled
+    this.maxOperationsPerTurn = maxOperationsPerTurn
     this.now = now
     this.setTimer = setTimer
     this.clearTimer = clearTimer
@@ -52,13 +56,19 @@ export class SharingPublicationCoordinator {
     if (this.stopped || !this.effectiveEnabled) return
     const settings = this.repository.getSettings()
     if (!settings.connectionEnabled || settings.enrollmentState !== 'connected') return
-    const operation = this.repository.nextOperation(this.now())
-    if (!operation) {
-      const availableAtMs = this.repository.nextOperationAvailableAt?.()
-      if (Number.isSafeInteger(availableAtMs)) this.schedule(Math.max(1, availableAtMs - this.now()))
-      return
+
+    let processed = 0
+    while (!this.stopped && processed < this.maxOperationsPerTurn) {
+      const operation = this.repository.nextOperation(this.now())
+      if (!operation) break
+      await this.processOperation(operation)
+      processed += 1
     }
-    let nextDelay = 1000
+
+    if (!this.stopped) this.scheduleFromDurableQueue()
+  }
+
+  async processOperation(operation) {
     try {
       if (operation.kind === 'publish') await this.publicationService.executePublish(operation)
       else if (operation.kind === 'unpublish' || operation.kind === 'delete') await this.publicationService.executeLifecycle(operation)
@@ -68,7 +78,6 @@ export class SharingPublicationCoordinator {
       const classification = classifyPublicationFailure(error, attemptCount)
       const retryable = classification.disposition !== 'terminal'
       const delay = publicationRetryDelay(classification, attemptCount, error?.retryAfterMs)
-      nextDelay = retryable ? delay : 1000
       this.repository.updateOperation(operation.id, {
         state: retryable ? 'retrying' : 'failed',
         attemptCount,
@@ -79,9 +88,17 @@ export class SharingPublicationCoordinator {
         const share = this.repository.getShare(operation.shareId)
         if (share) this.publicationService.onStateChanged(this.repository.updateShare(share.id, share.localRevision, { state: 'failed' }))
       }
-    } finally {
-      if (!this.stopped) this.schedule(nextDelay)
     }
+  }
+
+  scheduleFromDurableQueue() {
+    const at = this.now()
+    if (this.repository.nextOperation(at)) {
+      this.schedule(0)
+      return
+    }
+    const availableAtMs = this.repository.nextOperationAvailableAt?.()
+    if (Number.isSafeInteger(availableAtMs)) this.schedule(Math.max(1, availableAtMs - at))
   }
 }
 

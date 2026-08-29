@@ -82,6 +82,7 @@ export type SharingRemoteEventInterest = Readonly<{
   required: boolean
   activeShares: number
   pendingPublicationOperations: number
+  reconciliationRequired: number
   pendingAccountOperations: number
   recoveryPending: boolean
   pendingClaim: boolean
@@ -226,6 +227,8 @@ const publicationOperationColumns = `
   remote_failure_code AS remoteFailureCode,
   remote_missing_hashes_json AS remoteMissingHashesJson,
   activation_revision_id AS activationRevisionId,
+  predates_migration_0035 AS predatesMigration0035,
+  revision_intent_provenance AS revisionIntentProvenance,
   last_error_code AS lastErrorCode, created_at_ms AS createdAtMs,
   updated_at_ms AS updatedAtMs
 `
@@ -653,7 +656,10 @@ export function createSharingRepository(context: RepositoryContext) {
             AND remote_revision IS NOT NULL
             AND state NOT IN ('unpublished','expired','deleted')) AS activeShares,
         (SELECT count(*) FROM share_publication_operations
-          WHERE state IN ('queued','running','retrying')) AS pendingPublicationOperations,
+          WHERE state IN ('queued','running','retrying')
+            AND revision_intent_provenance <> 'reconciliation-required') AS pendingPublicationOperations,
+        (SELECT count(*) FROM share_publication_operations
+          WHERE revision_intent_provenance = 'reconciliation-required') AS reconciliationRequired,
         (SELECT count(*) FROM sharing_account_operations
           WHERE state IN ('pending','retrying')) AS pendingAccountOperations,
         (SELECT CASE WHEN recovery_state IS NULL THEN 0 ELSE 1 END
@@ -665,6 +671,7 @@ export function createSharingRepository(context: RepositoryContext) {
     `).get(atMs) as {
       activeShares: number
       pendingPublicationOperations: number
+      reconciliationRequired: number
       pendingAccountOperations: number
       recoveryPending: number
       pendingClaim: number
@@ -673,6 +680,7 @@ export function createSharingRepository(context: RepositoryContext) {
     const result = {
       activeShares: Number(row.activeShares),
       pendingPublicationOperations: Number(row.pendingPublicationOperations),
+      reconciliationRequired: Number(row.reconciliationRequired),
       pendingAccountOperations: Number(row.pendingAccountOperations),
       recoveryPending: row.recoveryPending === 1,
       pendingClaim: row.pendingClaim === 1,
@@ -852,6 +860,7 @@ export function createSharingRepository(context: RepositoryContext) {
     const at = now()
     const existing = sqlite.query(`SELECT ${publicationOperationColumns} FROM share_publication_operations WHERE idempotency_key = ?`).get(input.idempotencyKey) as Record<string, unknown> | null
     if (existing) {
+      assertPublicationIntentReconciled(existing)
       const immutableMatches = Number(existing.shareId) === input.shareId
         && (existing.localRevisionId == null ? null : Number(existing.localRevisionId)) === (input.localRevisionId ?? null)
         && existing.kind === input.kind
@@ -878,8 +887,9 @@ export function createSharingRepository(context: RepositoryContext) {
     sqlite.query(`
       INSERT INTO share_publication_operations (
         share_id, local_revision_id, idempotency_key, kind, state,
-        available_at_ms, expected_remote_revision, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?)
+        available_at_ms, expected_remote_revision, revision_intent_provenance,
+        predates_migration_0035, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, ?, ?, 'queued', ?, ?, 'exact', 0, ?, ?)
     `).run(input.shareId, input.localRevisionId ?? null, input.idempotencyKey, input.kind, input.availableAtMs ?? at, expectedRemoteRevision, at, at)
     return sqlite.query(`SELECT ${publicationOperationColumns} FROM share_publication_operations WHERE idempotency_key = ?`).get(input.idempotencyKey)
   }
@@ -890,6 +900,7 @@ export function createSharingRepository(context: RepositoryContext) {
       UPDATE share_publication_operations
       SET state = 'cancelled', updated_at_ms = ?
       WHERE share_id = ? AND kind = ? AND state IN ('queued', 'retrying')
+        AND revision_intent_provenance <> 'reconciliation-required'
     `).run(now(), shareId, kind).changes
   }
 
@@ -897,14 +908,51 @@ export function createSharingRepository(context: RepositoryContext) {
     return sqlite.query(`
       SELECT ${publicationOperationColumns}
       FROM share_publication_operations
-      WHERE state IN ('queued','running','retrying') AND available_at_ms <= ?
+      WHERE state IN ('queued','running','retrying')
+        AND revision_intent_provenance <> 'reconciliation-required'
+        AND available_at_ms <= ?
       ORDER BY available_at_ms, id LIMIT 1
     `).get(at)
   }
 
   function nextOperationAvailableAt() {
-    const row = sqlite.query(`SELECT min(available_at_ms) AS availableAtMs FROM share_publication_operations WHERE state IN ('queued','running','retrying')`).get() as { availableAtMs: number | null }
+    const row = sqlite.query(`
+      SELECT min(available_at_ms) AS availableAtMs
+      FROM share_publication_operations
+      WHERE state IN ('queued','running','retrying')
+        AND revision_intent_provenance <> 'reconciliation-required'
+    `).get() as { availableAtMs: number | null }
     return row.availableAtMs
+  }
+
+  function getPublicationReconciliationStatus() {
+    const row = sqlite.query(`
+      SELECT count(*) AS blockedCount
+      FROM share_publication_operations
+      WHERE revision_intent_provenance = 'reconciliation-required'
+    `).get() as { blockedCount: number }
+    const blockedCount = Number(row.blockedCount)
+    return {
+      blockedCount,
+      errorCode: blockedCount > 0 ? 'sharing-publication-reconciliation-required' : null,
+    }
+  }
+
+  function publicationMigrationAudit() {
+    return sqlite.query(`
+      SELECT kind, state,
+        CASE WHEN remote_operation_id IS NULL THEN 0 ELSE 1 END AS remoteOperationPresent,
+        CASE WHEN expected_remote_revision IS NULL THEN 0 ELSE 1 END AS expectedRevisionPresent,
+        predates_migration_0035 AS predatesMigration0035,
+        count(*) AS count
+      FROM share_publication_operations
+      GROUP BY kind, state, remoteOperationPresent, expectedRevisionPresent, predatesMigration0035
+      ORDER BY kind, state, remoteOperationPresent, expectedRevisionPresent, predatesMigration0035
+    `).all().map((row) => booleans(row as Record<string, unknown>, [
+      'remoteOperationPresent',
+      'expectedRevisionPresent',
+      'predatesMigration0035',
+    ]))
   }
 
   function updateOperation(id: number, patch: Readonly<{
@@ -921,6 +969,7 @@ export function createSharingRepository(context: RepositoryContext) {
     assertPositiveId(id, 'Publication operation ID')
     const current = sqlite.query(`SELECT ${publicationOperationColumns} FROM share_publication_operations WHERE id = ?`).get(id) as Record<string, number | string | null> | null
     if (!current) throw new Error(`Publication operation ${id} does not exist.`)
+    assertPublicationIntentReconciled(current)
     const missingHashesJson = patch.remoteMissingHashes === undefined
       ? current.remoteMissingHashesJson
       : patch.remoteMissingHashes === null ? null : JSON.stringify(normalizeContentHashes(patch.remoteMissingHashes))
@@ -961,6 +1010,7 @@ export function createSharingRepository(context: RepositoryContext) {
     return sqlite.transaction(() => {
       const current = sqlite.query(`SELECT ${publicationOperationColumns} FROM share_publication_operations WHERE id = ?`).get(id) as Record<string, unknown> | null
       if (!current) throw new Error(`Publication operation ${id} does not exist.`)
+      assertPublicationIntentReconciled(current)
       if (current.remoteOperationId !== null && Number(current.remoteOperationId) !== input.operationId) throw new Error('Remote publication operation identity changed during replay.')
       if (current.state === 'succeeded') {
         if (input.state !== 'active' || Number(current.activationRevisionId) !== input.activationResult?.revisionId) throw new Error('Completed remote publication evidence changed during replay.')
@@ -995,6 +1045,7 @@ export function createSharingRepository(context: RepositoryContext) {
     return sqlite.transaction(() => {
       const operation = sqlite.query(`SELECT ${publicationOperationColumns} FROM share_publication_operations WHERE id = ?`).get(input.operationId) as Record<string, unknown> | null
       if (!operation || Number(operation.shareId) !== input.shareId || operation.kind !== 'publish') throw new Error('Publication completion operation is invalid.')
+      assertPublicationIntentReconciled(operation)
       if (!Number.isSafeInteger(operation.expectedRemoteRevision) || Number(operation.expectedRemoteRevision) < 0 || Number(operation.expectedRemoteRevision) + 1 !== input.resultingRemoteRevision) throw new Error('Publication completion logical revision is invalid.')
       if (Number(operation.remoteOperationId) !== input.remoteOperationId) throw new Error('Publication completion remote operation is invalid.')
       const local = sqlite.query('SELECT manifest_hash AS manifestHash FROM share_local_revisions WHERE id = ? AND share_id = ?').get(operation.localRevisionId, input.shareId) as { manifestHash: string } | null
@@ -1082,6 +1133,8 @@ export function createSharingRepository(context: RepositoryContext) {
     cancelPendingOperations,
     nextOperation,
     nextOperationAvailableAt,
+    getPublicationReconciliationStatus,
+    publicationMigrationAudit,
     updateOperation,
     recordRemoteStage,
     completePublication,
@@ -1107,6 +1160,14 @@ function failedOperationCanBeRetried(code: string) {
     || code === 'sharing-rate-limited'
     || code === 'sharing-readiness-unavailable'
     || code === 'sharing-authentication-failed'
+}
+
+function assertPublicationIntentReconciled(operation: Record<string, unknown>) {
+  if (operation.revisionIntentProvenance !== 'reconciliation-required') return
+  throw Object.assign(
+    new Error('This publication requires controlled local reconciliation before it can resume.'),
+    { code: 'sharing-publication-reconciliation-required', status: 409 },
+  )
 }
 
 function normalizeContentHashes(values: readonly string[]) {

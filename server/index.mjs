@@ -579,6 +579,16 @@ async function withStore(request, response, handler, options = {}) {
 const sharingRepository = store
   ? createSharingRepository(createRepositoryContext(store.core.database))
   : null
+const sharingPublicationReconciliation = sharingRepository?.getPublicationReconciliationStatus() ?? {
+  blockedCount: 0,
+  errorCode: null,
+}
+if (sharingPublicationReconciliation.blockedCount > 0) {
+  console.warn('[sharing]', JSON.stringify({
+    code: sharingPublicationReconciliation.errorCode,
+    blockedCount: sharingPublicationReconciliation.blockedCount,
+  }))
+}
 const sharingEffectiveEnabled = Boolean(
   store
   && !isDemoMode
@@ -873,6 +883,7 @@ app.get('/api/health', (_request, response) => {
           status: sqlitePersistence?.status ?? 'unavailable',
           schemas: sqlitePersistence?.versions ?? null,
         },
+    sharing: { publicationReconciliation: sharingRepository?.getPublicationReconciliationStatus() ?? sharingPublicationReconciliation },
   })
   response.status(health.status).json(health.payload)
 })

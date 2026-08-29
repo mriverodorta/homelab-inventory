@@ -13,6 +13,34 @@ For the one-time persistence cutover, database paths, verification, backup compa
 
 The application creates its own timestamped backup under `/data/backups` before changing any store. That internal backup is a recovery aid, not a replacement for an external filesystem snapshot or NAS backup.
 
+## Core Schema 36: LabGD Publication Reconciliation
+
+Core schema 36 corrects legacy publication revision intent without guessing.
+It verifies the committed schema-35 migration receipt and uses that receipt's
+transaction boundary to identify operations that existed before exact expected
+remote revisions were persisted.
+
+A legacy queued publication receives the current share revision only when it
+has no remote operation identity, no attempts, no remote error or activation
+evidence, and has never been updated since creation. Any other unfinished
+legacy publication is marked `reconciliation-required`, its unsafe schema-35
+revision guess is cleared, and every other operation field is preserved.
+Completed operations and post-schema-35 publications remain unchanged.
+
+Quarantined operations cannot enter the publication queue or be retried through
+normal mutation paths. Startup and `/api/health` report only an aggregate count
+and the sanitized code `sharing-publication-reconciliation-required`; unrelated
+inventory remains usable. Before deployment, run:
+
+```bash
+bun run sharing:publication-preflight --database /data/databases/homelab-inventory.sqlite
+```
+
+The command opens SQLite read-only and emits grouped counts without IDs or
+private share data. Exit code `2` requires operator reconciliation before the
+upgrade can proceed. Repeated migration execution is deterministic and does not
+rewrite quarantined evidence.
+
 ## Schema 29: RAM Catalog Contract v8
 
 Schema 29 prepares existing inventories for exact physical RAM registry records. It renames a numeric legacy RAM `specs.speed` value to `specs.speedMt`, canonicalizes `SODIMM` as `SO-DIMM`, and separates host memory support into physical `formFactors` and electrical `moduleTypes`.

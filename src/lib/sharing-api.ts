@@ -45,6 +45,7 @@ export type SharingSettingsResponse = Readonly<{
         required: boolean
         activeShares: number
         pendingPublicationOperations: number
+        reconciliationRequired?: number
         pendingAccountOperations: number
         recoveryPending: boolean
         pendingClaim: boolean
@@ -69,6 +70,10 @@ export type SharingSettingsResponse = Readonly<{
       nextReconnectAtMs: number | null
     }
     account: { claimed: boolean; githubUsername: string | null; claimedAtMs: number | null; bindingRevision: number }
+    publicationReconciliation?: {
+      blockedCount: number
+      errorCode: 'sharing-publication-reconciliation-required' | null
+    }
   }
 }>
 

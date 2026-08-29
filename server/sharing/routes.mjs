@@ -45,6 +45,10 @@ function publicSettings(repository, flags, capabilities, eventCoordinator = null
     : { ...persisted, enrollmentState: 'disabled', nextAttemptAtMs: null }
   const projection = repository?.getInstallationProjection?.() ?? null
   const connection = eventCoordinator?.status?.() ?? null
+  const publicationReconciliation = repository?.getPublicationReconciliationStatus?.() ?? {
+    blockedCount: 0,
+    errorCode: null,
+  }
   return {
     available: flags.effectiveEnabled,
     automaticEnrollment: flags.effectiveEnabled,
@@ -61,6 +65,7 @@ function publicSettings(repository, flags, capabilities, eventCoordinator = null
         claimedAtMs: projection?.accountClaimedAtMs ?? null,
         bindingRevision: projection?.accountBindingRevision ?? 0,
       },
+      publicationReconciliation,
     },
   }
 }

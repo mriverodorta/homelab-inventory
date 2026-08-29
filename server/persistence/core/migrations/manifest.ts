@@ -180,4 +180,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0035_labgd_publication_convergence.sql',
     sha256: '911b3806a6d3d12c63acf59593692cbedb8cff54b36ec445adb6bf63d1bbc159',
   },
+  {
+    id: '0036_labgd_publication_reconciliation',
+    file: '0036_labgd_publication_reconciliation.sql',
+    sha256: '415000e85b83984562e5e274f0e0c91305c1d8f40e6f7539695e9e1ce74eb1c4',
+  },
 ]

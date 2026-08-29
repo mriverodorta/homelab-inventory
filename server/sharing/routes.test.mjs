@@ -29,7 +29,11 @@ describe('sharing routes', () => {
     expect(status).toMatchObject({
       available: false,
       capabilities: { publication: false, protectedShares: false, views: [] },
-      settings: { connectionEnabled: false, enrollmentState: 'disabled' },
+      settings: {
+        connectionEnabled: false,
+        enrollmentState: 'disabled',
+        publicationReconciliation: { blockedCount: 0, errorCode: null },
+      },
     })
     const mutation = await fetch(`${baseUrl}/api/sharing/shares`, {
       method: 'POST',
@@ -38,6 +42,31 @@ describe('sharing routes', () => {
     })
     expect(mutation.status).toBe(403)
     expect(await mutation.json()).toMatchObject({ code })
+  })
+
+  it('reports legacy publication quarantine without exposing operation details', async () => {
+    const repository = {
+      getSettings: () => ({ revision: 1, connectionEnabled: true, enrollmentState: 'connected' }),
+      getPublicationReconciliationStatus: () => ({
+        blockedCount: 2,
+        errorCode: 'sharing-publication-reconciliation-required',
+      }),
+    }
+    const baseUrl = await server({
+      repository,
+      publicationService: {},
+      identityService: {},
+      effectiveEnabled: true,
+    })
+
+    const status = await fetch(`${baseUrl}/api/sharing/settings`).then((response) => response.json())
+
+    expect(status.settings.publicationReconciliation).toEqual({
+      blockedCount: 2,
+      errorCode: 'sharing-publication-reconciliation-required',
+    })
+    expect(JSON.stringify(status)).not.toContain('idempotency')
+    expect(JSON.stringify(status)).not.toContain('manifest')
   })
 
   it('previews and queues only an explicitly approved share', async () => {

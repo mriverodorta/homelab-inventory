@@ -241,12 +241,15 @@ export const sharePublicationOperations = sqliteTable('share_publication_operati
   remoteFailureCode: text('remote_failure_code'),
   remoteMissingHashesJson: text('remote_missing_hashes_json'),
   activationRevisionId: integer('activation_revision_id'),
+  predatesMigration0035: integer('predates_migration_0035').notNull().default(0),
+  revisionIntentProvenance: text('revision_intent_provenance').notNull().default('exact'),
   lastErrorCode: text('last_error_code'),
   createdAtMs: integer('created_at_ms').notNull(),
   updatedAtMs: integer('updated_at_ms').notNull(),
 }, (table) => [
   uniqueIndex('share_publication_operations_idempotency_unique').on(table.idempotencyKey),
   index('share_publication_operations_queue_index').on(table.state, table.availableAtMs, table.id),
+  index('share_publication_operations_runnable_index').on(table.revisionIntentProvenance, table.state, table.availableAtMs, table.id),
   check('share_publication_operations_kind_check', sql`${table.kind} IN ('publish','unpublish','delete','resource-snapshot')`),
   check('share_publication_operations_state_check', sql`${table.state} IN ('queued','running','retrying','succeeded','failed','cancelled')`),
   check('share_publication_operations_attempt_check', sql`${table.attemptCount} >= 0`),
@@ -255,4 +258,6 @@ export const sharePublicationOperations = sqliteTable('share_publication_operati
   check('share_publication_operations_remote_state_check', sql`${table.remoteOperationState} IS NULL OR ${table.remoteOperationState} IN ('staged','ready','active','failed')`),
   check('share_publication_operations_remote_hashes_check', sql`${table.remoteMissingHashesJson} IS NULL OR (json_valid(${table.remoteMissingHashesJson}) AND json_type(${table.remoteMissingHashesJson}) = 'array')`),
   check('share_publication_operations_activation_revision_check', sql`${table.activationRevisionId} IS NULL OR ${table.activationRevisionId} > 0`),
+  check('share_publication_operations_predates_migration_check', sql`${table.predatesMigration0035} IN (0, 1)`),
+  check('share_publication_operations_intent_provenance_check', sql`${table.revisionIntentProvenance} IN ('exact','safe-backfill','reconciliation-required')`),
 ])

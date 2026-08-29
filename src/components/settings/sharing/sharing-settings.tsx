@@ -58,6 +58,7 @@ export function SharingSettings() {
   const settings = status?.settings
   const account=settings?.account??{claimed:false,githubUsername:null,claimedAtMs:null,bindingRevision:0}
   const connection=settings?.connection
+  const publicationReconciliation=settings?.publicationReconciliation??{blockedCount:0,errorCode:null}
 
   useEffect(() => {
     if (!editorOpen) setEditing(null)
@@ -185,6 +186,7 @@ export function SharingSettings() {
           </dl>
         </SettingRow> : null}
         {settings.enrollmentState === 'retrying' ? <div className="flex items-start gap-3 border-b border-[#e8e1d6] bg-[#fff8e8] p-4 text-sm text-[#6f4d16]"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>lab.gd is unavailable. This app remains healthy and will retry with bounded backoff{settings.nextAttemptAtMs ? ` after ${new Date(settings.nextAttemptAtMs).toLocaleString()}` : ''}.</p></div> : null}
+        {publicationReconciliation.blockedCount > 0 ? <div className="flex items-start gap-3 border-b border-[#e8e1d6] bg-[#fff4ee] p-4 text-sm text-[#7a2c1d]"><ShieldAlert className="mt-0.5 size-4 shrink-0" /><p>{publicationReconciliation.blockedCount} legacy publication operation{publicationReconciliation.blockedCount === 1 ? '' : 's'} paused before replay because the intended remote revision cannot be proven. Inventory remains available; run the publication migration preflight before controlled reconciliation.</p></div> : null}
         {settings.enrollmentState === 'recovery-pending' ? <div className="flex items-center justify-between gap-4 border-b border-[#e8e1d6] bg-[#fff4ee] p-4"><p className="text-sm leading-5 text-[#7a2c1d]">A replacement key is waiting for owner approval. Publication is stopped and no additional replacement key will be created.</p>{canPublish ? <Button variant="outline" onClick={() => sharing.resumeRecovery.mutate()} disabled={sharing.resumeRecovery.isPending}><RotateCw />Resume recovery</Button> : null}</div> : null}
         {!settings.connectionEnabled ? <div className="flex items-start gap-3 bg-[#fff8e8] p-4 text-sm leading-5 text-[#6f4d16]"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>The stable local identity is retained. Existing public content follows lab.gd lifecycle policy until this installation reconnects and receives resumable events.</p></div> : null}
       </SettingsSection>

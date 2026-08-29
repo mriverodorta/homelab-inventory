@@ -34,6 +34,14 @@ same installation, local operation, remote operation, idempotency key, public
 ID, manifest, request digest, and uploaded blobs. It never allocates a
 replacement share.
 
+Retry deadlines belong to individual operations. The coordinator processes
+ready work in deterministic `availableAtMs`, then operation-ID order, yielding
+after a bounded batch. A Registry-blocked publication can retain its six-hour
+retry deadline without delaying another publication, unpublish, delete, or
+other supported lifecycle operation. When no work is ready, one timer targets
+the earliest persisted deadline; restarting the application preserves that
+order and every attempt count.
+
 Network, timeout, authentication, readiness, and rate-limit failures have a
 bounded six-attempt retry budget with delays capped at 15 minutes. Integrity,
 ownership, invalid-request, idempotency-conflict, and unclassified failures are
@@ -202,6 +210,36 @@ atomically records that exact result and the active manifest. If SSE already
 applied it, completion converges without incrementing again. If a newer
 lifecycle revision is already present, publication preserves that newer state.
 Successful replay remains idempotent through every restart point.
+
+## Legacy Publication Reconciliation
+
+Schema 36 distinguishes exact post-intent publications from legacy operations
+using the verified schema-35 migration receipt as the durable boundary. A
+legacy queued publication is backfilled only when its stored evidence proves it
+was untouched and never reached LabGD. An unfinished legacy publication with a
+remote operation ID, prior attempts, remote result evidence, or another
+ambiguous state is marked `reconciliation-required` instead of receiving a
+guessed revision.
+
+Quarantine preserves the local operation, LabGD operation ID, idempotency key,
+public share ID, manifest and blob evidence, remote revision, attempts,
+timestamps, and SSE cursor. Quarantined operations are excluded from normal
+queue selection and mutation paths. Sharing settings and health expose only the
+sanitized error `sharing-publication-reconciliation-required` and an aggregate
+count; unrelated inventory remains available.
+
+Before deploying an upgrade, stop application writers and run the count-only
+preflight against the mounted core database:
+
+```bash
+bun run sharing:publication-preflight --database /data/databases/homelab-inventory.sqlite
+```
+
+The report groups counts only by operation kind, state, remote-operation
+presence, expected-revision presence, and whether the operation predates schema
+35. It prints no public IDs, manifests, credentials, signatures, or private
+content. Exit code `2` means an ambiguous operation requires controlled
+reconciliation; do not deploy, replay, delete, or replace that operation.
 
 After a GitHub account consumes the separate short-lived claim code at the exact
 clean claim URL, Homelab Inventory reflects the claimed installation state from

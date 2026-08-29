@@ -26,6 +26,7 @@ describe('application health', () => {
           schemas: { core: 10, telemetry: 2, catalog: 2 },
           database: { integrity: 'ok' },
         },
+        sharing: null,
       },
     })
   })
@@ -51,6 +52,37 @@ describe('application health', () => {
         applicationOemContractVersion: 6,
         applicationCatalogContractVersion: 12,
         persistence: null,
+        sharing: null,
+      },
+    })
+  })
+
+  it('reports sharing reconciliation without making unrelated inventory unhealthy', () => {
+    expect(applicationHealth({
+      mode: 'production',
+      schemaVersion: 36,
+      persistence: { ok: true },
+      sharing: {
+        publicationReconciliation: {
+          blockedCount: 2,
+          errorCode: 'sharing-publication-reconciliation-required',
+        },
+      },
+    })).toEqual({
+      status: 200,
+      payload: {
+        ok: true,
+        mode: 'production',
+        schemaVersion: 36,
+        applicationOemContractVersion: 6,
+        applicationCatalogContractVersion: 12,
+        persistence: { ok: true },
+        sharing: {
+          publicationReconciliation: {
+            blockedCount: 2,
+            errorCode: 'sharing-publication-reconciliation-required',
+          },
+        },
       },
     })
   })

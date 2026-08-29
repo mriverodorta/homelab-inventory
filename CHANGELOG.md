@@ -6,6 +6,15 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- LabGD publication and lifecycle queues now honor each operation's persisted retry deadline, so a Registry-blocked publication cannot delay ready publishes, unpublishes, or deletes; bounded deterministic batches keep repeatedly failing work from monopolizing the coordinator.
+- Legacy unfinished LabGD publications with ambiguous remote revision intent are now quarantined without changing their operation evidence, while provably untouched queued operations receive a safe revision intent and unrelated inventory remains available.
+
+### Added
+
+- A count-only LabGD publication preflight reports operations by kind, state, remote-operation evidence, expected revision, and pre-schema-35 origin, and blocks deployment when controlled reconciliation is required.
+
 ## [0.16.8] - 2026-08-29
 
 ### Fixed

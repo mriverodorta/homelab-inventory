@@ -52,6 +52,7 @@
     "packages:public:check": "bun scripts/check-share-packages.mjs",
     "packages:share:check": "bun scripts/check-share-packages.mjs",
     "sharing:integration:check": "bun scripts/sharing/verify-contract-readiness.mjs",
+    "sharing:publication-preflight": "bun scripts/sharing/publication-preflight.mjs",
     "start": "NODE_ENV=production bun server/index.mjs",
     "auth:reset-owner": "bun server/auth/reset-owner-cli.mjs",
     "test": "bun scripts/ci/test-supervisor.mjs",
