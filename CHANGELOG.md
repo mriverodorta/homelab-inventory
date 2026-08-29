@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.9] - 2026-08-29
+
 ### Fixed
 
 - LabGD publication and lifecycle queues now honor each operation's persisted retry deadline, so a Registry-blocked publication cannot delay ready publishes, unpublishes, or deletes; bounded deterministic batches keep repeatedly failing work from monopolizing the coordinator.

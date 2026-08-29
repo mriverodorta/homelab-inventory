@@ -726,7 +726,7 @@ const RELEASE_0_16_8_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_9_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'A LabGD publication waiting for historical Registry data no longer stalls ready publication, unpublish, or delete operations behind its retry deadline.',
@@ -735,6 +735,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [
     'Schema 36 records verifiable publication-intent provenance, applies only provably safe legacy backfills, and exposes a count-only deployment preflight for reconciliation-required operations.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1264,9 +1270,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.16.8',
+    version: '0.16.9',
     date: '2026-08-29',
     channel: 'latest',
+    title: 'Fair and safe LabGD publication recovery',
+    ...RELEASE_0_16_9_DETAILS,
+  },
+  {
+    version: '0.16.8',
+    date: '2026-08-29',
+    channel: 'release',
     title: 'Deterministic LabGD publication recovery',
     ...RELEASE_0_16_8_DETAILS,
   },
