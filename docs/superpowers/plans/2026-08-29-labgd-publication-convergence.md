@@ -36,11 +36,11 @@
 - Produces `completePublication(input)` for atomic operation/share convergence.
 - Extends `enqueueOperation(input)` with `expectedRemoteRevision` and explicit identical retry control.
 
-- [ ] **Step 1: Write failing migration and repository tests**
+- [x] **Step 1: Write failing migration and repository tests**
 
 Cover migration backfill for unfinished publication rows, rejection of negative revisions, new operation persistence, restart reads, different immutable request rejection, identical explicit retry, and one-transaction convergence for behind/equal/newer share projections.
 
-- [ ] **Step 2: Run focused tests and verify failure**
+- [x] **Step 2: Run focused tests and verify failure**
 
 ```bash
 bunx vitest run server/persistence/core/schema/schema.bun_spec.ts
@@ -49,15 +49,15 @@ bun test server/persistence/sqlite-store.bun_spec.ts
 
 Expected: failures for missing migration `0035`, missing `expectedRemoteRevision`, and missing `completePublication`.
 
-- [ ] **Step 3: Add migration and schema**
+- [x] **Step 3: Add migration and schema**
 
 Add `expected_remote_revision INTEGER` with a non-negative check. Backfill unfinished publish operations from `shares.remote_revision`, using `0` when absent. Register `0035_labgd_publication_convergence` after migration `0034`.
 
-- [ ] **Step 4: Add strict repository operations**
+- [x] **Step 4: Add strict repository operations**
 
 `enqueueOperation` captures expected revision for publish operations. Conflict handling returns existing immutable operations, reopens only an explicitly requested identical eligible failure, and preserves remote operation ID plus attempt history. `completePublication` validates operation identity and commits operation success plus exact share convergence atomically.
 
-- [ ] **Step 5: Run focused persistence tests**
+- [x] **Step 5: Run focused persistence tests**
 
 ```bash
 bunx vitest run server/persistence/core/schema/schema.bun_spec.ts
@@ -76,11 +76,11 @@ Expected: PASS.
 - Produces `stage()` result `{ operationId, state, failureCode, missingHashes, activationResult }`.
 - Adds safe remote error metadata `status` and bounded `retryAfterMs`.
 
-- [ ] **Step 1: Write failing client contract tests**
+- [x] **Step 1: Write failing client contract tests**
 
 Use injected `signedFetch` responses for staged, ready, failed Registry, and active replay operations. Reject malformed state, duplicate/invalid hashes, mismatched activation operation IDs, unsafe failure codes, unknown fields required by the sanitized projection, and oversized bodies.
 
-- [ ] **Step 2: Run the focused test**
+- [x] **Step 2: Run the focused test**
 
 ```bash
 bunx vitest run server/sharing/labgd-client.test.mjs
@@ -88,11 +88,11 @@ bunx vitest run server/sharing/labgd-client.test.mjs
 
 Expected: failures because stage currently returns only operation ID and missing hashes.
 
-- [ ] **Step 3: Implement strict stage projection**
+- [x] **Step 3: Implement strict stage projection**
 
 Validate LabGD's response and return only the sanitized fields consumed by publication recovery. Preserve HTTP status and bounded retry delay on remote errors without retaining response payloads.
 
-- [ ] **Step 4: Run the focused test**
+- [x] **Step 4: Run the focused test**
 
 ```bash
 bunx vitest run server/sharing/labgd-client.test.mjs
@@ -112,11 +112,11 @@ Expected: PASS.
 - Produces `classifyPublicationFailure(error, attemptCount)` returning `{ disposition, delayCapMs, maxAttempts }`.
 - Produces `publicationRetryDelay(classification, attemptCount, retryAfterMs)`.
 
-- [ ] **Step 1: Write failing retry taxonomy tests**
+- [x] **Step 1: Write failing retry taxonomy tests**
 
 Assert durable unlimited-attempt treatment only for `registry-definition-unavailable`; six-attempt bounded treatment for transport/timeouts, `408`, `425`, `429`, selected `5xx`, readiness, and recoverable authentication; and terminal treatment for ownership, idempotency, integrity, unsupported, malformed `4xx`, and unknown errors.
 
-- [ ] **Step 2: Run focused policy/coordinator tests**
+- [x] **Step 2: Run focused policy/coordinator tests**
 
 ```bash
 bunx vitest run server/sharing/publication-retry-policy.test.mjs server/sharing/publication-coordinator.test.mjs
@@ -124,11 +124,11 @@ bunx vitest run server/sharing/publication-retry-policy.test.mjs server/sharing/
 
 Expected: failure because the coordinator still retries every non-unsupported error six times.
 
-- [ ] **Step 3: Implement and integrate policy**
+- [x] **Step 3: Implement and integrate policy**
 
 Use a 15-second base. Cap durable Registry delay at six hours and bounded transient delay at 15 minutes. Honor a valid bounded `Retry-After`. Persist monotonic attempt counts, next availability, and safe error codes. Keep the share in publishing/failed state according to whether work remains retryable.
 
-- [ ] **Step 4: Run focused policy/coordinator tests**
+- [x] **Step 4: Run focused policy/coordinator tests**
 
 ```bash
 bunx vitest run server/sharing/publication-retry-policy.test.mjs server/sharing/publication-coordinator.test.mjs
@@ -149,11 +149,11 @@ Expected: PASS, including Registry recovery after attempt six and restart-preser
 - Consumes repository `completePublication(input)`.
 - Produces idempotent execution across all activation/SSE ordering cases.
 
-- [ ] **Step 1: Write failing crash-boundary tests**
+- [x] **Step 1: Write failing crash-boundary tests**
 
 Cover no mutation before activation; remote activation before local completion; SSE before replay; replay before SSE; duplicate SSE; repeated repository/service reconstruction; newer lifecycle revision preservation; and future lifecycle calls using the exact converged revision.
 
-- [ ] **Step 2: Run focused service and persistence tests**
+- [x] **Step 2: Run focused service and persistence tests**
 
 ```bash
 bunx vitest run server/sharing/publication-service.test.mjs
@@ -162,11 +162,11 @@ bun test server/persistence/sqlite-store.bun_spec.ts
 
 Expected: failures from blind `(share.remoteRevision ?? 0) + 1` behavior.
 
-- [ ] **Step 3: Implement immutable execution flow**
+- [x] **Step 3: Implement immutable execution flow**
 
 Capture expected revision at enqueue, stage the exact request on every retry, require stable remote operation identity, upload only validated missing hashes, activate using the stored expected revision, and call `completePublication` with logical result `expected + 1`. Treat an active stage replay as success evidence without inventing a second remote mutation.
 
-- [ ] **Step 4: Run focused service and persistence tests**
+- [x] **Step 4: Run focused service and persistence tests**
 
 ```bash
 bunx vitest run server/sharing/publication-service.test.mjs
@@ -188,11 +188,11 @@ Expected: PASS with one local operation, one remote operation, one public ID, an
 - Maps remote `staged` to local `publishing`.
 - Commits cursor and safe projection in one SQLite transaction.
 
-- [ ] **Step 1: Write failing exact-contract tests**
+- [x] **Step 1: Write failing exact-contract tests**
 
 Exercise all event kinds and share states, staged mapping, rejected `grace-period` payload state, canonical timestamps, binding revision zero, exact unlink disposition totals, unknown fields/versions, malformed IDs, oversized frames, cross-installation/unmatched events, and duplicate cursor replay.
 
-- [ ] **Step 2: Run focused event tests**
+- [x] **Step 2: Run focused event tests**
 
 ```bash
 bunx vitest run server/sharing/installation-event-coordinator.test.mjs
@@ -201,11 +201,11 @@ bun test server/persistence/sqlite-store.bun_spec.ts
 
 Expected: failures for staged state, timestamp normalization, and binding revision zero.
 
-- [ ] **Step 3: Implement exact validator and projection**
+- [x] **Step 3: Implement exact validator and projection**
 
 Require `new Date(value).toISOString() === value`, accept only LabGD's five share payload states, keep `grace-period` as a kind, validate unlink counts by disposition, map staged to publishing, never lower a revision, and always advance a valid unmatched event cursor once.
 
-- [ ] **Step 4: Run focused event tests**
+- [x] **Step 4: Run focused event tests**
 
 ```bash
 bunx vitest run server/sharing/installation-event-coordinator.test.mjs
@@ -227,11 +227,11 @@ Expected: PASS.
 - Produces `createTestFetchGuard(fetchImpl)` that rejects non-loopback LabGD destinations.
 - Fake contract supports stage, upload, failed activation, staging replay, successful recovery, SSE ordering, and lifecycle commands.
 
-- [ ] **Step 1: Write failing network-guard and lifecycle tests**
+- [x] **Step 1: Write failing network-guard and lifecycle tests**
 
 Prove direct and redirected production host attempts fail before fetch, loopback/in-memory transport works, Registry recovery uses the same remote operation/public ID, and demo/test modes never enroll, renew, publish, or open SSE.
 
-- [ ] **Step 2: Run focused isolation tests**
+- [x] **Step 2: Run focused isolation tests**
 
 ```bash
 bunx vitest run server/sharing/test-network-guard.test.mjs server/sharing/fake-labgd-contract.test.mjs server/external-access-policy.test.mjs
@@ -239,11 +239,11 @@ bunx vitest run server/sharing/test-network-guard.test.mjs server/sharing/fake-l
 
 Expected: failure until the shared guard and fake lifecycle exist.
 
-- [ ] **Step 3: Implement guard and fake contract harness**
+- [x] **Step 3: Implement guard and fake contract harness**
 
 Keep fixtures synthetic and secret-free. Inject transport into every protocol path. Record attempted destinations and assert that production hostname counters remain zero.
 
-- [ ] **Step 4: Run focused isolation tests**
+- [x] **Step 4: Run focused isolation tests**
 
 ```bash
 bunx vitest run server/sharing/test-network-guard.test.mjs server/sharing/fake-labgd-contract.test.mjs server/external-access-policy.test.mjs
@@ -262,15 +262,15 @@ Expected: PASS with zero production attempts.
 **Interfaces:**
 - Documents retry taxonomy, immutable logical revision convergence, exact event contract, and isolation guarantee.
 
-- [ ] **Step 1: Update human and structured release notes**
+- [x] **Step 1: Update human and structured release notes**
 
 Add user-visible reliability/security fixes under `Unreleased` without changing version fields.
 
-- [ ] **Step 2: Update sharing documentation**
+- [x] **Step 2: Update sharing documentation**
 
 Describe Registry-unavailable durable recovery, bounded transient versus terminal failures, expected logical revision behavior, staged event projection, and no-production-test boundary.
 
-- [ ] **Step 3: Run complete required validation**
+- [x] **Step 3: Run complete required validation**
 
 ```bash
 bun install --frozen-lockfile
@@ -284,7 +284,7 @@ bun run test:public-packages
 
 Expected: every command exits `0` and no test network guard records a production LabGD request.
 
-- [ ] **Step 4: Inspect repository and reference-service boundaries**
+- [x] **Step 4: Inspect repository and reference-service boundaries**
 
 ```bash
 git diff --check
@@ -295,6 +295,6 @@ git -C ../HomelabInventoryShare rev-parse HEAD
 
 Expected: only intended application changes before commit; LabGD remains clean at `730ffed2a7ceaf2a9d376432c4fb02b40091561e`.
 
-- [ ] **Step 5: Remove generated artifacts and commit**
+- [x] **Step 5: Remove generated artifacts and commit**
 
 Remove task-created `dist`, Vite cache, test databases, logs, and temporary fixtures while preserving source, dependencies, and every Docker volume. Commit the implementation and documentation with no version bump.

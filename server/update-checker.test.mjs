@@ -36,7 +36,7 @@ it('accepts channel-neutral release metadata for mutable channels', async () => 
     tag: 'latest',
     runningVersion: '0.1.15',
     runningRevision: 'older',
-    fetchImpl,
+    fetch: fetchImpl,
   })
   await expect(checker.check({ force: true })).resolves.toMatchObject({ errorCode: null, channel: 'latest' })
 })

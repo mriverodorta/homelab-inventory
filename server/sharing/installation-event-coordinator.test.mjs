@@ -151,6 +151,45 @@ describe('sharing installation event coordinator', () => {
     expect(readiness).toHaveBeenCalledOnce()
   })
 
+  it.each([
+    ['publication', 'staged'],
+    ['replacement', 'active'],
+    ['unpublish', 'unpublished'],
+    ['deletion', 'deleted'],
+    ['expiration', 'expired'],
+    ['grace-period', 'deleted'],
+  ])('accepts canonical %s events with %s share state', async (kind, state) => {
+    const repository = { getSettings: () => ({ connectionEnabled: true, enrollmentState: 'connected', remoteEventCursor: 0 }), applyRemoteEvent: vi.fn(() => ({ applied: true, shares: [] })) }
+    const client = { events: vi.fn(async () => stream([`id: 1\nevent: ${kind}\ndata: {"eventVersion":1,"sharePublicId":"share_1","revision":1,"state":"${state}","occurredAt":"2026-08-22T12:00:00.000Z"}\n\n`])) }
+    const coordinator = new SharingInstallationEventCoordinator({ repository, client, identityService: { getCapabilities: () => ({ installationEvents: true }), readiness: vi.fn() }, setTimer: () => 1, clearTimer: vi.fn() })
+    coordinator.stopped = false
+    await coordinator.connect()
+    expect(repository.applyRemoteEvent).toHaveBeenCalledWith(expect.objectContaining({ kind, payload: expect.objectContaining({ state }) }))
+  })
+
+  it('accepts account unlink binding revision zero and exact zero-share disposition totals', async () => {
+    const reconcileAccountStatus = vi.fn(async () => null)
+    const repository = { getSettings: () => ({ connectionEnabled: true, enrollmentState: 'connected', remoteEventCursor: 0 }), applyRemoteEvent: vi.fn() }
+    const client = { events: vi.fn(async () => stream(['id: 1\nevent: account-unlink\ndata: {"eventVersion":1,"bindingRevision":0,"disposition":"keep","operationId":1,"affected":{"shares":0,"keptOnline":0,"unpublished":0,"deleted":0},"occurredAt":"2026-08-22T12:00:00.000Z"}\n\n'])) }
+    const coordinator = new SharingInstallationEventCoordinator({ repository, client, identityService: { getCapabilities: () => ({ installationEvents: true }), reconcileAccountStatus }, setTimer: () => 1, clearTimer: vi.fn() })
+    coordinator.stopped = false
+    await coordinator.connect()
+    expect(reconcileAccountStatus).toHaveBeenCalledWith(1, { signal: expect.any(AbortSignal) })
+  })
+
+  it.each([
+    ['2026-08-22T12:00:00Z', 'active'],
+    ['2026-08-22T12:00:00.000+00:00', 'active'],
+    ['2026-08-22T12:00:00.000Z', 'grace-period'],
+  ])('rejects noncanonical timestamps and invalid share payload states', async (occurredAt, state) => {
+    const repository = { getSettings: () => ({ connectionEnabled: true, enrollmentState: 'connected', remoteEventCursor: 0 }), applyRemoteEvent: vi.fn() }
+    const client = { events: vi.fn(async () => stream([`id: 1\nevent: publication\ndata: {"eventVersion":1,"sharePublicId":"share_1","revision":1,"state":"${state}","occurredAt":"${occurredAt}"}\n\n`])) }
+    const coordinator = new SharingInstallationEventCoordinator({ repository, client, identityService: { getCapabilities: () => ({ installationEvents: true }), readiness: vi.fn() }, setTimer: () => 1, clearTimer: vi.fn(), logger: { warn: vi.fn() } })
+    coordinator.stopped = false
+    await coordinator.connect()
+    expect(repository.applyRemoteEvent).not.toHaveBeenCalled()
+  })
+
   it('reconciles installation account state without mutating a share', async () => {
     const applyRemoteEvent = vi.fn()
     const reconcileAccountStatus = vi.fn(async () => ({ accountClaimed: true, githubUsername: 'maikeldorta' }))

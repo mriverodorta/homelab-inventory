@@ -175,4 +175,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0033_sharing_event_lifecycle_hardening.sql',
     sha256: 'e82a54b1cba346d40d3826a5b9c8497cb6abd86ad390910ab83c3c729d8968e6',
   },
+  {
+    id: '0035_labgd_publication_convergence',
+    file: '0035_labgd_publication_convergence.sql',
+    sha256: '911b3806a6d3d12c63acf59593692cbedb8cff54b36ec445adb6bf63d1bbc159',
+  },
 ]

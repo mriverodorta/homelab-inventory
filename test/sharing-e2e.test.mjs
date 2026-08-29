@@ -54,9 +54,9 @@ describe('lab.gd sharing protocol', () => {
       if (pathname === '/v1/installations/activate') return Response.json({ status: 'active', installationId: 7, token: 't'.repeat(32), scopes: ['publication:write', 'events:read', 'shares:manage', 'analytics:read', 'token:renew', 'key:rotate', 'claim:create'], tokenExpiresAt: '2026-08-22T13:00:00.000Z' }, { status: 201 })
       expect(init.headers.authorization).toBe(`Bearer ${'t'.repeat(32)}`)
       expect(init.headers['x-labgd-signature']).toMatch(/^[A-Za-z0-9+/]+=*$/u)
-      if (pathname === '/v1/publications/manifest') return Response.json({ operation: { id: 11 }, missingHashes: ['a'.repeat(64)] }, { status: 202 })
+      if (pathname === '/v1/publications/manifest') return Response.json({ operation: { id: 11, state: 'ready' }, missingHashes: ['a'.repeat(64)] }, { status: 202 })
       if (pathname === `/v1/publications/operations/11/blobs/${'a'.repeat(64)}`) return new Response(null, { status: 204 })
-      if (pathname === '/v1/publications/operations/11/activate') return Response.json({ revisionId: 21 })
+      if (pathname === '/v1/publications/operations/11/activate') return Response.json({ operationId: 11, revisionId: 21 })
       throw new Error(`Unexpected request: ${pathname}`)
     }
     const repository = projectionRepository()
@@ -79,9 +79,9 @@ describe('lab.gd sharing protocol', () => {
       manifest: { shareContractVersion: 1 },
       availableHashes: [],
     })
-    expect(staged).toEqual({ operationId: 11, missingHashes: ['a'.repeat(64)] })
+    expect(staged).toEqual({ operationId: 11, state: 'ready', failureCode: null, missingHashes: ['a'.repeat(64)], activationResult: null })
     await client.upload(11, { contentHash: 'a'.repeat(64), contentJson: '{"viewType":"systems"}', mediaType: 'application/json' })
-    expect(await client.activate(11, 0)).toEqual({ revisionId: 21 })
+    expect(await client.activate(11, 0)).toEqual({ operationId: 11, revisionId: 21 })
     expect(paths.filter((path) => path.startsWith('/v1/publications/'))).toEqual([
       '/v1/publications/manifest',
       `/v1/publications/operations/11/blobs/${'a'.repeat(64)}`,

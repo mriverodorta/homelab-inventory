@@ -426,23 +426,31 @@ function parseFrame(frame) {
 
 function validatePayload(kind, payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload) || payload.eventVersion !== 1) throw Object.assign(new Error('lab.gd event version is unsupported.'), { code: 'sharing-event-version-unsupported' })
-  if (typeof payload.occurredAt !== 'string' || !Number.isFinite(Date.parse(payload.occurredAt))) throw Object.assign(new Error('lab.gd event payload is invalid.'), { code: 'sharing-events-invalid' })
+  if (typeof payload.occurredAt !== 'string' || !canonicalTimestamp(payload.occurredAt)) throw Object.assign(new Error('lab.gd event payload is invalid.'), { code: 'sharing-events-invalid' })
   if (SHARE_EVENT_KINDS.has(kind)) {
     exactKeys(payload, ['eventVersion', 'sharePublicId', 'revision', 'state', 'occurredAt'])
-    if (typeof payload.sharePublicId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/u.test(payload.sharePublicId) || !Number.isSafeInteger(payload.revision) || payload.revision <= 0 || !['active', 'unpublished', 'deleted', 'expired', 'grace-period'].includes(payload.state)) throw Object.assign(new Error('lab.gd share event payload is invalid.'), { code: 'sharing-events-invalid' })
+    if (typeof payload.sharePublicId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/u.test(payload.sharePublicId) || !Number.isSafeInteger(payload.revision) || payload.revision <= 0 || !['staged', 'active', 'unpublished', 'deleted', 'expired'].includes(payload.state)) throw Object.assign(new Error('lab.gd share event payload is invalid.'), { code: 'sharing-events-invalid' })
   } else if (kind === 'account-claim') {
     exactKeys(payload, ['eventVersion', 'claimId', 'state', 'occurredAt'])
     if (typeof payload.claimId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/u.test(payload.claimId) || payload.state !== 'completed') throw Object.assign(new Error('lab.gd claim event payload is invalid.'), { code: 'sharing-events-invalid' })
   } else if (kind === 'account-unlink') {
     exactKeys(payload, ['eventVersion', 'bindingRevision', 'disposition', 'operationId', 'affected', 'occurredAt'])
-    if (!Number.isSafeInteger(payload.bindingRevision) || payload.bindingRevision <= 0 || !Number.isSafeInteger(payload.operationId) || payload.operationId <= 0 || !['keep', 'unpublish', 'delete'].includes(payload.disposition)) throw Object.assign(new Error('lab.gd account unlink event payload is invalid.'), { code: 'sharing-events-invalid' })
+    if (!Number.isSafeInteger(payload.bindingRevision) || payload.bindingRevision < 0 || !Number.isSafeInteger(payload.operationId) || payload.operationId <= 0 || !['keep', 'unpublish', 'delete'].includes(payload.disposition)) throw Object.assign(new Error('lab.gd account unlink event payload is invalid.'), { code: 'sharing-events-invalid' })
     exactKeys(payload.affected, ['shares', 'keptOnline', 'unpublished', 'deleted'])
     const { shares, keptOnline, unpublished, deleted } = payload.affected
-    if ([shares, keptOnline, unpublished, deleted].some((count) => !Number.isSafeInteger(count) || count < 0) || keptOnline + unpublished + deleted !== shares) throw Object.assign(new Error('lab.gd account unlink event payload is invalid.'), { code: 'sharing-events-invalid' })
+    const expected = payload.disposition === 'keep'
+      ? [shares, 0, 0]
+      : payload.disposition === 'unpublish' ? [0, shares, 0] : [0, 0, shares]
+    if ([shares, keptOnline, unpublished, deleted].some((count) => !Number.isSafeInteger(count) || count < 0) || [keptOnline, unpublished, deleted].some((count, index) => count !== expected[index])) throw Object.assign(new Error('lab.gd account unlink event payload is invalid.'), { code: 'sharing-events-invalid' })
   } else {
     exactKeys(payload, ['eventVersion', 'state', 'occurredAt'])
     if (!['active', 'recovery-pending', 'revoked'].includes(payload.state)) throw Object.assign(new Error('lab.gd recovery event payload is invalid.'), { code: 'sharing-events-invalid' })
   }
+}
+
+function canonicalTimestamp(value) {
+  const parsed = new Date(value)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value
 }
 
 function exactKeys(value, expected) {

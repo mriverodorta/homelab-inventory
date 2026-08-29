@@ -38,6 +38,21 @@ function repository(syncMode = 'manual') {
       return operation
     },
     updateOperation: (id, patch) => operations.set(id, { ...operations.get(id), ...patch }),
+    recordRemoteStage: (id, staged) => {
+      const current = operations.get(id)
+      if (current.remoteOperationId != null && current.remoteOperationId !== staged.operationId) throw new Error('remote operation changed')
+      const updated = { ...current, state: 'running', remoteOperationId: staged.operationId, remoteOperationState: staged.state, remoteFailureCode: staged.failureCode, remoteMissingHashes: staged.missingHashes, activationRevisionId: staged.activationResult?.revisionId ?? null }
+      operations.set(id, updated)
+      return updated
+    },
+    completePublication: (input) => {
+      const current = operations.get(input.operationId)
+      operations.set(input.operationId, { ...current, state: 'succeeded', activationRevisionId: input.activationRevisionId })
+      if (share.remoteRevision == null || share.remoteRevision <= input.resultingRemoteRevision) {
+        share = { ...share, remotePublicId: input.remotePublicId, remoteRevision: input.resultingRemoteRevision, activeManifestHash: input.manifestHash, state: 'synced', localRevision: share.localRevision + 1 }
+      }
+      return { projection: 'converged', share: { ...share } }
+    },
     cancelPendingOperations: (_shareId, kind = 'publish') => {
       let count = 0
       for (const operation of operations.values()) {
@@ -66,9 +81,9 @@ const projected = {
 function service(syncMode = 'manual') {
   const repo = repository(syncMode)
   const client = {
-    stage: vi.fn(async () => ({ operationId: 9, missingHashes: ['a'.repeat(64)] })),
+    stage: vi.fn(async () => ({ operationId: 9, state: 'ready', failureCode: null, missingHashes: ['a'.repeat(64)], activationResult: null })),
     upload: vi.fn(async () => {}),
-    activate: vi.fn(async () => ({ revisionId: 12 })),
+    activate: vi.fn(async (operationId) => ({ operationId, revisionId: 12 })),
   }
   const publication = new SharingPublicationService({
     repository: repo,
@@ -96,15 +111,17 @@ describe('sharing publication service', () => {
 
   it('replays one remote operation and public ID after credential recovery', async () => {
     const { repo, client, publication } = service()
-    client.stage.mockResolvedValue({ operationId: 132, missingHashes: [] })
+    client.stage.mockResolvedValue({ operationId: 132, state: 'ready', failureCode: null, missingHashes: [], activationResult: null })
     client.activate
       .mockRejectedValueOnce(Object.assign(new Error('Authentication failed.'), { code: 'authentication-failed' }))
-      .mockResolvedValueOnce({ revisionId: 133 })
+      .mockResolvedValueOnce({ operationId: 132, revisionId: 133 })
     const preview = await publication.preview(1)
     await publication.approvePreview(1, preview.manifestHash)
     const operation = await publication.enqueuePublish(1)
 
     await expect(publication.executePublish(operation)).rejects.toMatchObject({ code: 'authentication-failed' })
+    expect(repo.getShare()).toMatchObject({ state: 'publishing', remotePublicId: null, remoteRevision: null, activeManifestHash: null })
+    expect(repo.operations.get(operation.id)).toMatchObject({ id: operation.id, state: 'running', remoteOperationId: 132, expectedRemoteRevision: 0 })
     await publication.executePublish(operation)
 
     expect(repo.operations.size).toBe(1)
@@ -114,6 +131,42 @@ describe('sharing publication service', () => {
     expect(client.activate).toHaveBeenNthCalledWith(2, 132, 0)
     expect(repo.operations.get(operation.id)).toMatchObject({ state: 'succeeded', remoteOperationId: 132 })
     expect(repo.getShare()).toMatchObject({ state: 'synced', remotePublicId: 'share_public_0001', remoteRevision: 1 })
+  })
+
+  it('recovers the same Registry-blocked operation after staging replay exposes the durable failure', async () => {
+    const { repo, client, publication } = service()
+    const ready = { operationId: 132, state: 'ready', failureCode: null, missingHashes: [], activationResult: null }
+    const blocked = { operationId: 132, state: 'failed', failureCode: 'registry-definition-unavailable', missingHashes: [], activationResult: null }
+    client.stage.mockResolvedValueOnce(ready).mockResolvedValueOnce(blocked).mockResolvedValueOnce(blocked)
+    client.activate
+      .mockRejectedValueOnce(Object.assign(new Error('generic activation conflict'), { code: 'publication-failed', status: 409 }))
+      .mockResolvedValueOnce({ operationId: 132, revisionId: 733 })
+    const preview = await publication.preview(1)
+    await publication.approvePreview(1, preview.manifestHash)
+    const operation = await publication.enqueuePublish(1)
+
+    await expect(publication.executePublish(operation)).rejects.toMatchObject({ code: 'registry-definition-unavailable' })
+    await publication.executePublish(repo.operations.get(operation.id))
+
+    expect(repo.operations.size).toBe(1)
+    expect(client.stage.mock.calls.map(([request]) => request.sharePublicId)).toEqual(['share_public_0001', 'share_public_0001', 'share_public_0001'])
+    expect(client.activate).toHaveBeenNthCalledWith(1, 132, 0)
+    expect(client.activate).toHaveBeenNthCalledWith(2, 132, 0)
+    expect(repo.getShare()).toMatchObject({ remotePublicId: 'share_public_0001', remoteRevision: 1, state: 'synced' })
+  })
+
+  it('converges an active staging replay without activating or incrementing twice', async () => {
+    const { repo, client, publication } = service()
+    client.stage.mockResolvedValue({ operationId: 132, state: 'active', failureCode: null, missingHashes: [], activationResult: { operationId: 132, revisionId: 733 } })
+    const preview = await publication.preview(1)
+    await publication.approvePreview(1, preview.manifestHash)
+    const operation = await publication.enqueuePublish(1)
+    repo.updateShare(1, repo.getShare().localRevision, { remotePublicId: 'share_public_0001', remoteRevision: 1, state: 'synced' })
+
+    await publication.executePublish(operation)
+
+    expect(client.activate).not.toHaveBeenCalled()
+    expect(repo.getShare()).toMatchObject({ remoteRevision: 1, activeManifestHash: projected.manifestHash, state: 'synced' })
   })
 
   it('rejects publication when selections changed after preview', async () => {

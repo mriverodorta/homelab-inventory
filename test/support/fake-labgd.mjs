@@ -36,7 +36,7 @@ export class FakeLabGd {
       const existingOwner = this.shareOwners.get(value.sharePublicId)
       if (existingOwner && existingOwner !== installation.id) return Response.json({ error: 'not-found' }, { status: 404 })
       this.shareOwners.set(value.sharePublicId, installation.id)
-      return Response.json({ operation: { id: this.nextOperationId++ }, missingHashes: [] }, { status: 202 })
+      return Response.json({ operation: { id: this.nextOperationId++, state: 'ready' }, missingHashes: [] }, { status: 202 })
     }
     return Response.json({ error: 'not-found' }, { status: 404 })
   }

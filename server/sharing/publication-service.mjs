@@ -53,6 +53,8 @@ export class SharingPublicationService {
       localRevisionId: preview.localRevisionId,
       idempotencyKey: idempotencyKey(shareId, preview.manifestHash),
       kind: 'publish',
+      expectedRemoteRevision: current.remoteRevision ?? 0,
+      retryIdenticalFailed: true,
     })
     const updated = this.repository.updateShare(shareId, current.localRevision, { state: 'publishing' })
     this.onStateChanged(updated)
@@ -63,33 +65,54 @@ export class SharingPublicationService {
     const share = this.repository.getShare(operation.shareId)
     const local = this.repository.getLocalRevision(operation.localRevisionId)
     if (!share || !local) throw new Error('Publication operation references missing local state.')
+    if (!Number.isSafeInteger(operation.expectedRemoteRevision) || operation.expectedRemoteRevision < 0) throw publicationError('Publication operation expected revision is missing.', 'sharing-publication-integrity-failed')
     const manifest = JSON.parse(local.manifestJson)
     const remotePublicId = share.remotePublicId ?? await this.publicIds.id('share', share.id)
     const availableHashes = share.activeManifestHash === local.manifestHash ? local.blobs.map(({ contentHash }) => contentHash) : []
-    const staged = await this.client.stage({
+    const stageRequest = {
       idempotencyKey: operation.idempotencyKey,
       sharePublicId: remotePublicId,
       manifest,
       availableHashes,
-    })
-    this.repository.updateOperation(operation.id, { state: 'running', remoteOperationId: staged.operationId })
+    }
+    const staged = await this.client.stage(stageRequest)
+    this.repository.recordRemoteStage(operation.id, staged)
+    if (staged.state === 'active') return this.completeStagedPublication({ operation, share, local, remotePublicId, staged })
+    if (staged.state === 'failed' && staged.failureCode !== 'registry-definition-unavailable') throw publicationError('lab.gd publication operation is terminal.', staged.failureCode ?? 'sharing-publication-failed')
     const blobs = new Map(local.blobs.map((blob) => [blob.contentHash, blob]))
     for (const hash of staged.missingHashes) {
       const blob = blobs.get(hash)
       if (!blob) throw new Error(`lab.gd requested unknown share blob ${hash}.`)
       await this.client.upload(staged.operationId, blob)
     }
-    await this.client.activate(staged.operationId, share.remoteRevision ?? 0)
-    this.repository.updateOperation(operation.id, { state: 'succeeded', remoteOperationId: staged.operationId, lastErrorCode: null })
-    const current = this.repository.getShare(share.id)
-    const updated = this.repository.updateShare(share.id, current.localRevision, {
+    let activation
+    try {
+      activation = await this.client.activate(staged.operationId, operation.expectedRemoteRevision)
+    } catch (error) {
+      if (error?.code !== 'publication-failed' || error?.status !== 409) throw error
+      const replayed = await this.client.stage(stageRequest)
+      this.repository.recordRemoteStage(operation.id, replayed)
+      if (replayed.state === 'active') return this.completeStagedPublication({ operation, share, local, remotePublicId, staged: replayed })
+      if (replayed.state === 'failed') throw publicationError('lab.gd publication activation failed.', replayed.failureCode ?? 'sharing-publication-failed')
+      throw error
+    }
+    return this.completeStagedPublication({ operation, share, local, remotePublicId, staged: { ...staged, activationResult: activation } })
+  }
+
+  completeStagedPublication({ operation, share, local, remotePublicId, staged }) {
+    const activation = staged.activationResult
+    if (!activation || activation.operationId !== staged.operationId || !Number.isSafeInteger(activation.revisionId) || activation.revisionId <= 0) throw publicationError('lab.gd publication activation result is invalid.', 'sharing-publication-integrity-failed')
+    const completed = this.repository.completePublication({
+      shareId: share.id,
+      operationId: operation.id,
+      remoteOperationId: staged.operationId,
       remotePublicId,
-      remoteRevision: (share.remoteRevision ?? 0) + 1,
-      activeManifestHash: local.manifestHash,
-      state: 'synced',
+      resultingRemoteRevision: operation.expectedRemoteRevision + 1,
+      manifestHash: local.manifestHash,
+      activationRevisionId: activation.revisionId,
     })
-    this.onStateChanged(updated)
-    return updated
+    this.onStateChanged(completed.share)
+    return completed.share
   }
 
   enqueueLifecycle(shareId, kind) {
@@ -192,6 +215,13 @@ export class SharingPublicationService {
       idempotencyKey: idempotencyKey(shareId, preview.manifestHash),
       kind: 'publish',
       availableAtMs: now + debounceMs,
+      expectedRemoteRevision: share.remoteRevision,
     })
   }
+}
+
+function publicationError(message, code) {
+  const error = new Error(message)
+  error.code = typeof code === 'string' && /^[a-z0-9-]{1,80}$/u.test(code) ? code : 'sharing-publication-failed'
+  return error
 }

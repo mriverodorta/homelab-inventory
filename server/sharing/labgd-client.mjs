@@ -27,10 +27,14 @@ export class LabGdPublicationClient {
       body: { idempotencyKey, sharePublicId, manifest, availableHashes },
     })
     const result = await boundedJson(response)
-    if (!response.ok || !Number.isSafeInteger(result.operation?.id) || !Array.isArray(result.missingHashes)) {
+    if (!response.ok) {
       throw remoteError(response, result, 'sharing-publication-stage-failed')
     }
-    return { operationId: result.operation.id, missingHashes: result.missingHashes }
+    try {
+      return publicationStageResult(result)
+    } catch {
+      throw remoteError(response, {}, 'sharing-publication-stage-failed')
+    }
   }
 
   async upload(operationId, blob) {
@@ -48,7 +52,7 @@ export class LabGdPublicationClient {
       body: { expectedShareRevision },
     })
     const result = await boundedJson(response)
-    if (!response.ok || !Number.isSafeInteger(result.revisionId)) {
+    if (!response.ok || result.operationId !== operationId || !Number.isSafeInteger(result.revisionId) || result.revisionId <= 0) {
       throw remoteError(response, result, 'sharing-publication-activation-failed')
     }
     return result
@@ -135,7 +139,29 @@ async function boundedJson(response, maximumBytes = MAX_JSON_BYTES) {
 function remoteError(response, body, fallback) {
   const error = new Error(typeof body?.message === 'string' ? body.message : `lab.gd request failed with HTTP ${response.status}.`)
   error.code = typeof body?.code === 'string' ? body.code : typeof body?.error === 'string' ? body.error : fallback
+  error.status = response.status
   const retryAfter = Number(response.headers.get('retry-after'))
   error.retryAfterMs = Number.isFinite(retryAfter) && retryAfter >= 0 ? Math.min(retryAfter * 1000, 3_600_000) : null
   return error
+}
+
+function publicationStageResult(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !value.operation || typeof value.operation !== 'object' || Array.isArray(value.operation)) throw new Error('invalid stage result')
+  const operationId = value.operation.id
+  const state = value.operation.state
+  if (!Number.isSafeInteger(operationId) || operationId <= 0 || !['staged', 'ready', 'active', 'failed'].includes(state)) throw new Error('invalid stage operation')
+  if (!Array.isArray(value.missingHashes) || value.missingHashes.some((hash) => typeof hash !== 'string' || !/^[a-f0-9]{64}$/u.test(hash)) || new Set(value.missingHashes).size !== value.missingHashes.length) throw new Error('invalid missing hashes')
+  const failureCode = value.operation.failureCode ?? null
+  if ((failureCode !== null && (typeof failureCode !== 'string' || !/^[a-z0-9-]{1,80}$/u.test(failureCode))) || (state === 'failed') !== (failureCode !== null)) throw new Error('invalid failure code')
+  const result = value.operation.result ?? null
+  if (state === 'active') {
+    if (!result || typeof result !== 'object' || Array.isArray(result) || Object.keys(result).length !== 2 || !Object.hasOwn(result, 'operationId') || !Object.hasOwn(result, 'revisionId') || result.operationId !== operationId || !Number.isSafeInteger(result.revisionId) || result.revisionId <= 0) throw new Error('invalid activation result')
+  } else if (result !== null) throw new Error('unexpected activation result')
+  return {
+    operationId,
+    state,
+    failureCode,
+    missingHashes: [...value.missingHashes],
+    activationResult: result === null ? null : { operationId: result.operationId, revisionId: result.revisionId },
+  }
 }

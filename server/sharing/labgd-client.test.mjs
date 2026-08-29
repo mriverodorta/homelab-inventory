@@ -2,6 +2,59 @@ import { describe, expect, it, vi } from 'vitest'
 import { LabGdPublicationClient } from './labgd-client.mjs'
 
 describe('lab.gd installation control client', () => {
+  it('retains sanitized staged, failed, and active publication replay metadata', async () => {
+    const responses = [
+      { operation: { id: 132, state: 'ready' }, missingHashes: ['a'.repeat(64)] },
+      { operation: { id: 132, state: 'failed', failureCode: 'registry-definition-unavailable' }, missingHashes: [] },
+      { operation: { id: 132, state: 'active', result: { operationId: 132, revisionId: 733 } }, missingHashes: [] },
+    ]
+    const signedFetch = vi.fn(async () => Response.json(responses.shift()))
+    const client = new LabGdPublicationClient({ identityService: { signedFetch } })
+
+    await expect(client.stage({ idempotencyKey: 'stable', sharePublicId: 'share_1', manifest: {}, availableHashes: [] })).resolves.toEqual({
+      operationId: 132,
+      state: 'ready',
+      failureCode: null,
+      missingHashes: ['a'.repeat(64)],
+      activationResult: null,
+    })
+    await expect(client.stage({ idempotencyKey: 'stable', sharePublicId: 'share_1', manifest: {}, availableHashes: [] })).resolves.toMatchObject({
+      operationId: 132,
+      state: 'failed',
+      failureCode: 'registry-definition-unavailable',
+    })
+    await expect(client.stage({ idempotencyKey: 'stable', sharePublicId: 'share_1', manifest: {}, availableHashes: [] })).resolves.toMatchObject({
+      operationId: 132,
+      state: 'active',
+      activationResult: { operationId: 132, revisionId: 733 },
+    })
+  })
+
+  it('rejects malformed publication replay metadata', async () => {
+    const invalid = [
+      { operation: { id: 1, state: 'unknown' }, missingHashes: [] },
+      { operation: { id: 1, state: 'ready' }, missingHashes: ['A'.repeat(64)] },
+      { operation: { id: 1, state: 'ready' }, missingHashes: ['a'.repeat(64), 'a'.repeat(64)] },
+      { operation: { id: 1, state: 'failed', failureCode: 'Unsafe Code' }, missingHashes: [] },
+      { operation: { id: 1, state: 'active', result: { operationId: 2, revisionId: 3 } }, missingHashes: [] },
+    ]
+    const signedFetch = vi.fn(async () => Response.json(invalid.shift()))
+    const client = new LabGdPublicationClient({ identityService: { signedFetch } })
+    for (let index = 0; index < 5; index += 1) {
+      await expect(client.stage({ idempotencyKey: 'stable', sharePublicId: 'share_1', manifest: {}, availableHashes: [] })).rejects.toMatchObject({ code: 'sharing-publication-stage-failed' })
+    }
+  })
+
+  it('retains safe HTTP retry metadata without retaining remote response bodies', async () => {
+    const signedFetch = vi.fn(async () => Response.json({ code: 'publication-readiness-unavailable', message: 'not ready' }, { status: 503, headers: { 'retry-after': '90' } }))
+    const client = new LabGdPublicationClient({ identityService: { signedFetch } })
+    await expect(client.stage({ idempotencyKey: 'stable', sharePublicId: 'share_1', manifest: {}, availableHashes: [] })).rejects.toMatchObject({
+      code: 'publication-readiness-unavailable',
+      status: 503,
+      retryAfterMs: 90_000,
+    })
+  })
+
   it('opens signed resumable events with the persisted cursor', async () => {
     const signedFetch = vi.fn(async () => new Response(': heartbeat\n\n', { headers: { 'content-type': 'text/event-stream' } }))
     const client = new LabGdPublicationClient({ identityService: { signedFetch } })

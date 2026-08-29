@@ -1,4 +1,8 @@
 import '@testing-library/jest-dom/vitest'
+import { createTestFetchGuard } from '../../server/sharing/test-network-guard.mjs'
+
+const testFetch = globalThis.fetch.bind(globalThis)
+globalThis.fetch = createTestFetchGuard(testFetch)
 
 if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = class ResizeObserver {

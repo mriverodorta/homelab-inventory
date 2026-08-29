@@ -25,6 +25,21 @@ steps:
 Any selected-content change invalidates the approval. An interrupted update
 leaves the previous remote revision active.
 
+Publication records the expected remote logical revision before the first
+remote mutation. Staging replay retains the remote operation ID, state,
+sanitized failure code, missing content hashes, and activation evidence. A
+publication blocked by `registry-definition-unavailable` remains durably
+retryable with exponential backoff capped at six hours and always reuses the
+same installation, local operation, remote operation, idempotency key, public
+ID, manifest, request digest, and uploaded blobs. It never allocates a
+replacement share.
+
+Network, timeout, authentication, readiness, and rate-limit failures have a
+bounded six-attempt retry budget with delays capped at 15 minutes. Integrity,
+ownership, invalid-request, idempotency-conflict, and unclassified failures are
+terminal. An operator retry can reopen only an identical eligible request; it
+cannot reset a changed or unrelated failed publication.
+
 ## Privacy Boundary
 
 The projector constructs new public objects from an allowlist. It never clones
@@ -160,6 +175,12 @@ SQLite transaction, so reconnect replay cannot duplicate state. There is no poll
 Unknown event versions stop event application and trigger capability
 renegotiation before the stream can resume.
 
+Share events accept only the exact remote states `staged`, `active`,
+`unpublished`, `deleted`, and `expired`; `grace-period` is an event kind rather
+than a share payload state. `staged` projects locally as publishing. Event
+timestamps must be canonical ISO strings, and unknown fields, kinds, versions,
+unsafe revisions, malformed public IDs, and oversized frames fail closed.
+
 Connection timestamps, bounded error codes, reconnect attempts, and the next
 retry time are persisted without tokens, signatures, nonces, private keys, or
 request payloads. Intentional dormancy remains a healthy connected installation;
@@ -173,6 +194,14 @@ projection changes; a conflict reloads authoritative state instead of
 overwriting it. Password entry is sent only through the signed installation
 handoff. Plaintext passwords are never stored in local SQLite, browser storage,
 logs, backups, queued operations, or response bodies.
+
+The activation response's `revisionId` identifies LabGD's revision row; it is
+not treated as the logical share revision. The logical publication result is
+the operation's persisted expected revision plus one. Publication completion
+atomically records that exact result and the active manifest. If SSE already
+applied it, completion converges without incrementing again. If a newer
+lifecycle revision is already present, publication preserves that newer state.
+Successful replay remains idempotent through every restart point.
 
 After a GitHub account consumes the separate short-lived claim code at the exact
 clean claim URL, Homelab Inventory reflects the claimed installation state from
@@ -210,6 +239,12 @@ SSE stream; the browser does not poll sharing status.
 The contract verification workflow is local and non-deploying. It must not
 render production secrets, modify SkyBolt services, enable publication, publish
 container images, or change public routing.
+
+Automated sharing tests install a transport guard that rejects every non-loopback
+HTTP or HTTPS destination before DNS or connection setup. Contract tests use
+in-memory fetch implementations or loopback-only fake services. Demo, staging,
+and test modes keep LabGD disabled and never create installation identity or
+credential files.
 
 ## Rollout Verification
 

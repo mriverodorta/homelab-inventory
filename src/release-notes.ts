@@ -716,8 +716,14 @@ const RELEASE_0_16_7_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
-  notes: [],
+  fixes: [
+    'LabGD shares blocked by temporarily unavailable historical Registry definitions now recover using the original operation and permanent public ID instead of becoming terminal after six attempts.',
+    'Share revisions now converge exactly across activation, event delivery, crashes, and restarts without duplicate revision increments or stale publication state overwriting newer lifecycle changes.',
+    'LabGD event validation now accepts staged publication events, rejects noncanonical timestamps and invalid payload states, and keeps automated tests isolated from production services.',
+  ],
+  notes: [
+    'Schema 35 persists immutable publication revision intent and sanitized remote replay evidence so interrupted publication can resume deterministically.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

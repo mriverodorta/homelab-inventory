@@ -163,12 +163,14 @@ describe('sharing repository', () => {
         localRevisionId: revisionId,
         idempotencyKey: 'publish:1:1',
         kind: 'publish',
-      })).toMatchObject({ id: 1, state: 'queued' })
+        expectedRemoteRevision: 0,
+      })).toMatchObject({ id: 1, state: 'queued', expectedRemoteRevision: 0 })
       expect(repository.enqueueOperation({
         shareId: share.id,
         localRevisionId: revisionId,
         idempotencyKey: 'publish:1:1',
         kind: 'publish',
+        expectedRemoteRevision: 0,
       })).toMatchObject({ id: 1 })
       expect(repository.nextOperation()).toMatchObject({ id: 1, shareId: 1 })
       expect(repository.cancelPendingOperations(share.id)).toBe(1)
@@ -178,6 +180,7 @@ describe('sharing repository', () => {
         localRevisionId: revisionId,
         idempotencyKey: 'publish:1:1',
         kind: 'publish',
+        expectedRemoteRevision: 0,
       })).toMatchObject({ id: 1, state: 'queued' })
       expect(repository.updateShare(share.id, 1, { state: 'preview-ready', approvedPreviewHash: 'b'.repeat(64) })).toMatchObject({
         localRevision: 2,
@@ -209,6 +212,66 @@ describe('sharing repository', () => {
     }
   })
 
+  test('persists immutable publication intent and requeues only an identical eligible failure', async () => {
+    const { handle, repository } = await fixture()
+    try {
+      const share = repository.createShare({ projectId: 1, title: 'Durable publication', mutability: 'replaceable', syncMode: 'manual', visibility: 'unlisted', views: [{ workspaceId: 1, viewType: 'systems' }] })
+      const manifestJson = JSON.stringify({ contractVersion: 1 })
+      const revisionId = repository.persistRevision({ shareId: share.id, revision: 1, manifestHash: 'd'.repeat(64), manifestJson, blobs: [] })
+      const operation = repository.enqueueOperation({ shareId: share.id, localRevisionId: revisionId, idempotencyKey: 'durable-publish-1', kind: 'publish', expectedRemoteRevision: 0 })
+      repository.updateOperation(operation.id, { state: 'failed', attemptCount: 8, remoteOperationId: 132, lastErrorCode: 'registry-definition-unavailable' })
+
+      const restarted = createSharingRepository(createRepositoryContext(handle.database, () => Date.parse('2026-08-22T13:00:00.000Z')))
+      expect(restarted.enqueueOperation({ shareId: share.id, localRevisionId: revisionId, idempotencyKey: 'durable-publish-1', kind: 'publish', expectedRemoteRevision: 0, retryIdenticalFailed: true })).toMatchObject({
+        id: operation.id,
+        state: 'retrying',
+        attemptCount: 8,
+        remoteOperationId: 132,
+        expectedRemoteRevision: 0,
+      })
+      expect(() => restarted.enqueueOperation({ shareId: share.id, localRevisionId: revisionId, idempotencyKey: 'durable-publish-1', kind: 'publish', expectedRemoteRevision: 1, retryIdenticalFailed: true })).toThrow('immutable request')
+
+      restarted.updateOperation(operation.id, { state: 'failed', lastErrorCode: 'sharing-publication-integrity-failed' })
+      expect(() => restarted.enqueueOperation({ shareId: share.id, localRevisionId: revisionId, idempotencyKey: 'durable-publish-1', kind: 'publish', expectedRemoteRevision: 0, retryIdenticalFailed: true })).toThrow('not eligible')
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('completes publication atomically without lowering or double-incrementing remote state', async () => {
+    const { handle, repository } = await fixture()
+    try {
+      const createOperation = (suffix: string, expectedRemoteRevision: number) => {
+        const share = repository.createShare({ projectId: 1, title: `Convergence ${suffix}`, mutability: 'replaceable', syncMode: 'manual', visibility: 'unlisted', views: [{ workspaceId: 1, viewType: 'systems' }] })
+        if (expectedRemoteRevision > 0) repository.updateShare(share.id, share.localRevision, { remotePublicId: `share_${suffix}`, remoteRevision: expectedRemoteRevision, state: 'publishing' })
+        const current = repository.getShare(share.id)!
+        const localRevisionId = repository.persistRevision({ shareId: share.id, revision: current.localRevision, manifestHash: suffix.repeat(64).slice(0, 64), manifestJson: JSON.stringify({ suffix }), blobs: [] })
+        const operation = repository.enqueueOperation({ shareId: share.id, localRevisionId, idempotencyKey: `converge-${suffix}`, kind: 'publish', expectedRemoteRevision })
+        repository.updateOperation(operation.id, { state: 'running', remoteOperationId: operation.id + 100 })
+        return { shareId: share.id, operationId: operation.id, remoteOperationId: operation.id + 100, manifestHash: suffix.repeat(64).slice(0, 64) }
+      }
+
+      const behind = createOperation('a', 0)
+      expect(repository.completePublication({ ...behind, remotePublicId: 'share_a', resultingRemoteRevision: 1, activationRevisionId: 501 })).toMatchObject({ projection: 'advanced', share: { remoteRevision: 1, state: 'synced' } })
+
+      const equal = createOperation('b', 1)
+      repository.applyRemoteEvent({ id: 80, kind: 'replacement', payload: { eventVersion: 1, sharePublicId: 'share_b', revision: 2, state: 'active', occurredAt: '2026-08-22T12:00:00.000Z' } })
+      const converged = repository.completePublication({ ...equal, remotePublicId: 'share_b', resultingRemoteRevision: 2, activationRevisionId: 502 })
+      expect(converged).toMatchObject({ projection: 'converged', share: { remoteRevision: 2, state: 'synced' } })
+      const restarted = createSharingRepository(createRepositoryContext(handle.database, () => Date.parse('2026-08-22T13:00:00.000Z')))
+      expect(restarted.completePublication({ ...equal, remotePublicId: 'share_b', resultingRemoteRevision: 2, activationRevisionId: 502 })).toEqual(converged)
+      expect(() => restarted.completePublication({ ...equal, remotePublicId: 'different_share', resultingRemoteRevision: 2, activationRevisionId: 502 })).toThrow('public ID changed')
+      expect(() => restarted.recordRemoteStage(equal.operationId, { operationId: equal.remoteOperationId, state: 'failed', failureCode: 'registry-definition-unavailable', missingHashes: [], activationResult: null })).toThrow('evidence changed')
+
+      const newer = createOperation('c', 2)
+      repository.applyRemoteEvent({ id: 81, kind: 'unpublish', payload: { eventVersion: 1, sharePublicId: 'share_c', revision: 4, state: 'unpublished', occurredAt: '2026-08-22T12:01:00.000Z' } })
+      expect(repository.completePublication({ ...newer, remotePublicId: 'share_c', resultingRemoteRevision: 3, activationRevisionId: 503 })).toMatchObject({ projection: 'newer-preserved', share: { remoteRevision: 4, state: 'unpublished' } })
+      expect(repository.nextOperation()).toBeNull()
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
   test('applies remote events and advances the cursor in one transaction', async () => {
     const { handle, repository } = await fixture()
     try {
@@ -226,6 +289,12 @@ describe('sharing repository', () => {
       expect(repository.getSettings().remoteEventCursor).toBe(41)
       expect(() => repository.applyRemoteEvent({ id: 42, kind: 'replacement', payload: { eventVersion: 1, sharePublicId: 'share_remote_1', revision: 4, state: 'hostile', occurredAt: '2026-08-22T12:02:00.000Z' } })).toThrow('state is invalid')
       expect(repository.getSettings().remoteEventCursor).toBe(41)
+
+      const staged = repository.createShare({ projectId: 1, title: 'Staged share', mutability: 'replaceable', syncMode: 'manual', visibility: 'unlisted', views: [{ workspaceId: 1, viewType: 'systems' }] })
+      repository.updateShare(staged.id, staged.localRevision, { remotePublicId: 'share_staged_1', state: 'publishing' })
+      expect(repository.applyRemoteEvent({ id: 42, kind: 'publication', payload: { eventVersion: 1, sharePublicId: 'share_staged_1', revision: 1, state: 'staged', occurredAt: '2026-08-22T12:02:00.000Z' } })).toMatchObject({ applied: true, shares: [{ state: 'publishing', remoteRevision: 1 }] })
+      expect(repository.applyRemoteEvent({ id: 43, kind: 'publication', payload: { eventVersion: 1, sharePublicId: 'unknown_share', revision: 1, state: 'staged', occurredAt: '2026-08-22T12:03:00.000Z' } })).toEqual({ applied: true, shares: [] })
+      expect(repository.getSettings().remoteEventCursor).toBe(43)
     } finally {
       closeManagedDatabase(handle)
     }
@@ -330,8 +399,10 @@ describe('sharing repository', () => {
 
       repository.enqueueOperation({
         shareId: share.id,
+        localRevisionId: repository.persistRevision({ shareId: share.id, revision: share.localRevision, manifestHash: 'e'.repeat(64), manifestJson: '{}', blobs: [] }),
         idempotencyKey: 'demand-driven-publish-1',
         kind: 'publish',
+        expectedRemoteRevision: 0,
       })
       expect(repository.getRemoteEventInterest()).toMatchObject({ required: true, pendingPublicationOperations: 1 })
 

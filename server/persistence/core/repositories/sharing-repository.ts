@@ -117,7 +117,7 @@ export type ShareRecord = Readonly<{
 
 export type SharingRemoteEvent = Readonly<{
   id: number
-  kind: 'publication' | 'replacement' | 'unpublish' | 'deletion' | 'expiration' | 'grace-period' | 'account-claim' | 'recovery'
+  kind: 'publication' | 'replacement' | 'unpublish' | 'deletion' | 'expiration' | 'grace-period' | 'account-claim' | 'account-unlink' | 'recovery'
   payload: Readonly<Record<string, unknown>>
 }>
 
@@ -214,6 +214,20 @@ const shareColumns = `
   remote_revision AS remoteRevision, active_manifest_hash AS activeManifestHash,
   approved_preview_hash AS approvedPreviewHash, account_claimed AS accountClaimed,
   created_at_ms AS createdAtMs, updated_at_ms AS updatedAtMs
+`
+
+const publicationOperationColumns = `
+  id, share_id AS shareId, local_revision_id AS localRevisionId,
+  idempotency_key AS idempotencyKey, kind, state,
+  attempt_count AS attemptCount, available_at_ms AS availableAtMs,
+  remote_operation_id AS remoteOperationId,
+  expected_remote_revision AS expectedRemoteRevision,
+  remote_operation_state AS remoteOperationState,
+  remote_failure_code AS remoteFailureCode,
+  remote_missing_hashes_json AS remoteMissingHashesJson,
+  activation_revision_id AS activationRevisionId,
+  last_error_code AS lastErrorCode, created_at_ms AS createdAtMs,
+  updated_at_ms AS updatedAtMs
 `
 
 export function createSharingRepository(context: RepositoryContext) {
@@ -825,31 +839,49 @@ export function createSharingRepository(context: RepositoryContext) {
     idempotencyKey: string
     kind: 'publish' | 'unpublish' | 'delete' | 'resource-snapshot'
     availableAtMs?: number
+    expectedRemoteRevision?: number | null
+    retryIdenticalFailed?: boolean
   }>) {
     assertPositiveId(input.shareId, 'Share ID')
     if (input.localRevisionId != null) assertPositiveId(input.localRevisionId, 'Local share revision ID')
+    const expectedRemoteRevision = input.expectedRemoteRevision ?? null
+    if (input.kind === 'publish') {
+      if (input.localRevisionId == null) throw new Error('Publication operation requires a local revision.')
+      if (!Number.isSafeInteger(expectedRemoteRevision) || Number(expectedRemoteRevision) < 0) throw new Error('Publication operation expected remote revision is invalid.')
+    } else if (expectedRemoteRevision !== null) throw new Error('Lifecycle operation cannot carry a publication revision.')
     const at = now()
+    const existing = sqlite.query(`SELECT ${publicationOperationColumns} FROM share_publication_operations WHERE idempotency_key = ?`).get(input.idempotencyKey) as Record<string, unknown> | null
+    if (existing) {
+      const immutableMatches = Number(existing.shareId) === input.shareId
+        && (existing.localRevisionId == null ? null : Number(existing.localRevisionId)) === (input.localRevisionId ?? null)
+        && existing.kind === input.kind
+        && (existing.expectedRemoteRevision == null ? null : Number(existing.expectedRemoteRevision)) === expectedRemoteRevision
+      if (!immutableMatches) throw new Error('Publication operation immutable request does not match the existing idempotency key.')
+      if (existing.state === 'cancelled') {
+        sqlite.query(`
+          UPDATE share_publication_operations
+          SET state = 'queued', attempt_count = 0, available_at_ms = ?,
+              remote_operation_id = NULL, remote_operation_state = NULL,
+              remote_failure_code = NULL, remote_missing_hashes_json = NULL,
+              activation_revision_id = NULL, last_error_code = NULL, updated_at_ms = ?
+          WHERE id = ?
+        `).run(input.availableAtMs ?? at, at, existing.id)
+      } else if (existing.state === 'failed' && input.retryIdenticalFailed) {
+        if (!failedOperationCanBeRetried(String(existing.lastErrorCode ?? existing.remoteFailureCode ?? ''))) {
+          throw new Error('Publication operation failure is not eligible for explicit retry.')
+        }
+        sqlite.query(`UPDATE share_publication_operations SET state = 'retrying', available_at_ms = ?, updated_at_ms = ? WHERE id = ?`)
+          .run(input.availableAtMs ?? at, at, existing.id)
+      }
+      return sqlite.query(`SELECT ${publicationOperationColumns} FROM share_publication_operations WHERE id = ?`).get(existing.id)
+    }
     sqlite.query(`
       INSERT INTO share_publication_operations (
         share_id, local_revision_id, idempotency_key, kind, state,
-        available_at_ms, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)
-      ON CONFLICT(idempotency_key) DO UPDATE SET
-        local_revision_id = excluded.local_revision_id,
-        state = 'queued', attempt_count = 0,
-        available_at_ms = excluded.available_at_ms,
-        remote_operation_id = NULL, last_error_code = NULL,
-        updated_at_ms = excluded.updated_at_ms
-      WHERE share_publication_operations.state = 'cancelled'
-    `).run(input.shareId, input.localRevisionId ?? null, input.idempotencyKey, input.kind, input.availableAtMs ?? at, at, at)
-    return sqlite.query(`
-      SELECT id, share_id AS shareId, local_revision_id AS localRevisionId,
-        idempotency_key AS idempotencyKey, kind, state, attempt_count AS attemptCount,
-        available_at_ms AS availableAtMs, remote_operation_id AS remoteOperationId,
-        last_error_code AS lastErrorCode, created_at_ms AS createdAtMs,
-        updated_at_ms AS updatedAtMs
-      FROM share_publication_operations WHERE idempotency_key = ?
-    `).get(input.idempotencyKey)
+        available_at_ms, expected_remote_revision, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?)
+    `).run(input.shareId, input.localRevisionId ?? null, input.idempotencyKey, input.kind, input.availableAtMs ?? at, expectedRemoteRevision, at, at)
+    return sqlite.query(`SELECT ${publicationOperationColumns} FROM share_publication_operations WHERE idempotency_key = ?`).get(input.idempotencyKey)
   }
 
   function cancelPendingOperations(shareId: number, kind: 'publish' | 'unpublish' | 'delete' | 'resource-snapshot' = 'publish') {
@@ -863,15 +895,16 @@ export function createSharingRepository(context: RepositoryContext) {
 
   function nextOperation(at = now()) {
     return sqlite.query(`
-      SELECT id, share_id AS shareId, local_revision_id AS localRevisionId,
-        idempotency_key AS idempotencyKey, kind, state, attempt_count AS attemptCount,
-        available_at_ms AS availableAtMs, remote_operation_id AS remoteOperationId,
-        last_error_code AS lastErrorCode, created_at_ms AS createdAtMs,
-        updated_at_ms AS updatedAtMs
+      SELECT ${publicationOperationColumns}
       FROM share_publication_operations
-      WHERE state IN ('queued','retrying') AND available_at_ms <= ?
+      WHERE state IN ('queued','running','retrying') AND available_at_ms <= ?
       ORDER BY available_at_ms, id LIMIT 1
     `).get(at)
+  }
+
+  function nextOperationAvailableAt() {
+    const row = sqlite.query(`SELECT min(available_at_ms) AS availableAtMs FROM share_publication_operations WHERE state IN ('queued','running','retrying')`).get() as { availableAtMs: number | null }
+    return row.availableAtMs
   }
 
   function updateOperation(id: number, patch: Readonly<{
@@ -879,22 +912,127 @@ export function createSharingRepository(context: RepositoryContext) {
     attemptCount?: number
     availableAtMs?: number
     remoteOperationId?: number | null
+    remoteOperationState?: 'staged' | 'ready' | 'active' | 'failed' | null
+    remoteFailureCode?: string | null
+    remoteMissingHashes?: readonly string[] | null
+    activationRevisionId?: number | null
     lastErrorCode?: string | null
   }>) {
     assertPositiveId(id, 'Publication operation ID')
-    const current = sqlite.query('SELECT attempt_count AS attemptCount, available_at_ms AS availableAtMs, remote_operation_id AS remoteOperationId, last_error_code AS lastErrorCode FROM share_publication_operations WHERE id = ?').get(id) as Record<string, number | string | null> | null
+    const current = sqlite.query(`SELECT ${publicationOperationColumns} FROM share_publication_operations WHERE id = ?`).get(id) as Record<string, number | string | null> | null
     if (!current) throw new Error(`Publication operation ${id} does not exist.`)
+    const missingHashesJson = patch.remoteMissingHashes === undefined
+      ? current.remoteMissingHashesJson
+      : patch.remoteMissingHashes === null ? null : JSON.stringify(normalizeContentHashes(patch.remoteMissingHashes))
     sqlite.query(`
       UPDATE share_publication_operations
       SET state = ?, attempt_count = ?, available_at_ms = ?, remote_operation_id = ?,
-          last_error_code = ?, updated_at_ms = ? WHERE id = ?
+          remote_operation_state = ?, remote_failure_code = ?, remote_missing_hashes_json = ?,
+          activation_revision_id = ?, last_error_code = ?, updated_at_ms = ? WHERE id = ?
     `).run(
       patch.state, patch.attemptCount ?? current.attemptCount,
       patch.availableAtMs ?? current.availableAtMs,
       patch.remoteOperationId === undefined ? current.remoteOperationId : patch.remoteOperationId,
+      patch.remoteOperationState === undefined ? current.remoteOperationState : patch.remoteOperationState,
+      patch.remoteFailureCode === undefined ? current.remoteFailureCode : patch.remoteFailureCode,
+      missingHashesJson,
+      patch.activationRevisionId === undefined ? current.activationRevisionId : patch.activationRevisionId,
       patch.lastErrorCode === undefined ? current.lastErrorCode : patch.lastErrorCode,
       now(), id,
     )
+  }
+
+  function recordRemoteStage(id: number, input: Readonly<{
+    operationId: number
+    state: 'staged' | 'ready' | 'active' | 'failed'
+    failureCode: string | null
+    missingHashes: readonly string[]
+    activationResult: Readonly<{ operationId: number; revisionId: number }> | null
+  }>) {
+    assertPositiveId(id, 'Publication operation ID')
+    assertPositiveId(input.operationId, 'Remote publication operation ID')
+    const hashes = normalizeContentHashes(input.missingHashes)
+    if (input.failureCode !== null && !/^[a-z0-9-]{1,80}$/u.test(input.failureCode)) throw new Error('Remote publication failure code is invalid.')
+    if ((input.state === 'failed') !== (input.failureCode !== null)) throw new Error('Remote publication failure state is invalid.')
+    if ((input.state === 'active') !== (input.activationResult !== null)) throw new Error('Remote publication activation state is invalid.')
+    if (input.activationResult && (input.activationResult.operationId !== input.operationId || !Number.isSafeInteger(input.activationResult.revisionId) || input.activationResult.revisionId <= 0)) {
+      throw new Error('Remote publication activation result is invalid.')
+    }
+    return sqlite.transaction(() => {
+      const current = sqlite.query(`SELECT ${publicationOperationColumns} FROM share_publication_operations WHERE id = ?`).get(id) as Record<string, unknown> | null
+      if (!current) throw new Error(`Publication operation ${id} does not exist.`)
+      if (current.remoteOperationId !== null && Number(current.remoteOperationId) !== input.operationId) throw new Error('Remote publication operation identity changed during replay.')
+      if (current.state === 'succeeded') {
+        if (input.state !== 'active' || Number(current.activationRevisionId) !== input.activationResult?.revisionId) throw new Error('Completed remote publication evidence changed during replay.')
+        return current
+      }
+      sqlite.query(`
+        UPDATE share_publication_operations
+        SET state = 'running', remote_operation_id = ?, remote_operation_state = ?,
+            remote_failure_code = ?, remote_missing_hashes_json = ?, activation_revision_id = ?,
+            updated_at_ms = ? WHERE id = ?
+      `).run(input.operationId, input.state, input.failureCode, JSON.stringify(hashes), input.activationResult?.revisionId ?? null, now(), id)
+      return sqlite.query(`SELECT ${publicationOperationColumns} FROM share_publication_operations WHERE id = ?`).get(id)
+    })()
+  }
+
+  function completePublication(input: Readonly<{
+    shareId: number
+    operationId: number
+    remoteOperationId: number
+    remotePublicId: string
+    resultingRemoteRevision: number
+    manifestHash: string
+    activationRevisionId: number
+  }>) {
+    assertPositiveId(input.shareId, 'Share ID')
+    assertPositiveId(input.operationId, 'Publication operation ID')
+    assertPositiveId(input.remoteOperationId, 'Remote publication operation ID')
+    assertPositiveId(input.resultingRemoteRevision, 'Resulting remote revision')
+    assertPositiveId(input.activationRevisionId, 'Activation revision ID')
+    if (!/^[A-Za-z0-9_-]{1,128}$/u.test(input.remotePublicId)) throw new Error('Remote share ID is invalid.')
+    if (!/^[a-f0-9]{64}$/u.test(input.manifestHash)) throw new Error('Publication manifest hash is invalid.')
+    return sqlite.transaction(() => {
+      const operation = sqlite.query(`SELECT ${publicationOperationColumns} FROM share_publication_operations WHERE id = ?`).get(input.operationId) as Record<string, unknown> | null
+      if (!operation || Number(operation.shareId) !== input.shareId || operation.kind !== 'publish') throw new Error('Publication completion operation is invalid.')
+      if (!Number.isSafeInteger(operation.expectedRemoteRevision) || Number(operation.expectedRemoteRevision) < 0 || Number(operation.expectedRemoteRevision) + 1 !== input.resultingRemoteRevision) throw new Error('Publication completion logical revision is invalid.')
+      if (Number(operation.remoteOperationId) !== input.remoteOperationId) throw new Error('Publication completion remote operation is invalid.')
+      const local = sqlite.query('SELECT manifest_hash AS manifestHash FROM share_local_revisions WHERE id = ? AND share_id = ?').get(operation.localRevisionId, input.shareId) as { manifestHash: string } | null
+      if (!local || local.manifestHash !== input.manifestHash) throw new Error('Publication completion manifest is invalid.')
+      const share = getShare(input.shareId)
+      if (!share) throw new Error('Publication completion share is missing.')
+      if (share.remotePublicId !== null && share.remotePublicId !== input.remotePublicId) throw new Error('Publication completion public ID changed during replay.')
+
+      if (operation.state === 'succeeded') {
+        if (Number(operation.activationRevisionId) !== input.activationRevisionId) throw new Error('Publication completion activation revision changed during replay.')
+        if (share.remoteRevision == null || share.remoteRevision < input.resultingRemoteRevision) throw new Error('Completed publication projection is behind its logical revision.')
+        return {
+          projection: share.remoteRevision === input.resultingRemoteRevision ? 'converged' as const : 'newer-preserved' as const,
+          share,
+        }
+      }
+
+      let projection: 'advanced' | 'converged' | 'newer-preserved'
+      if (share.remoteRevision == null || share.remoteRevision < input.resultingRemoteRevision) {
+        projection = 'advanced'
+        sqlite.query(`UPDATE shares SET remote_public_id = ?, remote_revision = ?, active_manifest_hash = ?, state = 'synced', local_revision = local_revision + 1, updated_at_ms = ? WHERE id = ?`)
+          .run(input.remotePublicId, input.resultingRemoteRevision, input.manifestHash, now(), input.shareId)
+      } else if (share.remoteRevision === input.resultingRemoteRevision) {
+        projection = 'converged'
+        const state = ['publishing', 'synced', 'failed'].includes(share.state) ? 'synced' : share.state
+        sqlite.query(`UPDATE shares SET remote_public_id = COALESCE(remote_public_id, ?), active_manifest_hash = ?, state = ?, local_revision = local_revision + 1, updated_at_ms = ? WHERE id = ?`)
+          .run(input.remotePublicId, input.manifestHash, state, now(), input.shareId)
+      } else projection = 'newer-preserved'
+
+      sqlite.query(`
+        UPDATE share_publication_operations
+        SET state = 'succeeded', remote_operation_state = 'active',
+            activation_revision_id = ?, remote_failure_code = NULL,
+            remote_missing_hashes_json = '[]', last_error_code = NULL, updated_at_ms = ?
+        WHERE id = ?
+      `).run(input.activationRevisionId, now(), input.operationId)
+      return { projection, share: getShare(input.shareId)! }
+    })()
   }
 
   function saveResourceSnapshot(shareId: number, contentHash: string, payload: unknown, capturedAtMs = now()) {
@@ -943,15 +1081,38 @@ export function createSharingRepository(context: RepositoryContext) {
     enqueueOperation,
     cancelPendingOperations,
     nextOperation,
+    nextOperationAvailableAt,
     updateOperation,
+    recordRemoteStage,
+    completePublication,
     saveResourceSnapshot,
   }
 }
 
 function remoteShareState(value: unknown): ShareState {
+  if (value === 'staged') return 'publishing'
   if (value === 'active') return 'synced'
-  if (value === 'unpublished' || value === 'deleted' || value === 'expired' || value === 'grace-period') return value
+  if (value === 'unpublished' || value === 'deleted' || value === 'expired') return value
   throw new Error('Remote share event state is invalid.')
+}
+
+function failedOperationCanBeRetried(code: string) {
+  return code === 'registry-definition-unavailable'
+    || code === 'authentication-failed'
+    || code === 'labgd-unavailable'
+    || code === 'labgd-renewal-failed'
+    || code === 'publication-readiness-unavailable'
+    || code === 'sharing-network-failed'
+    || code === 'sharing-request-timeout'
+    || code === 'sharing-rate-limited'
+    || code === 'sharing-readiness-unavailable'
+    || code === 'sharing-authentication-failed'
+}
+
+function normalizeContentHashes(values: readonly string[]) {
+  if (!Array.isArray(values) || values.some((value) => typeof value !== 'string' || !/^[a-f0-9]{64}$/u.test(value))) throw new Error('Remote publication missing hashes are invalid.')
+  if (new Set(values).size !== values.length) throw new Error('Remote publication missing hashes are duplicated.')
+  return [...values].sort()
 }
 
 function normalizeAccountUnlinkResult(value: AccountUnlinkResult, operation: SharingAccountOperation): AccountUnlinkResult {

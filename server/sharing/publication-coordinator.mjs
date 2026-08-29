@@ -1,5 +1,4 @@
-const MAX_ATTEMPTS = 6
-const BASE_DELAY_MS = 15_000
+import { classifyPublicationFailure, publicationRetryDelay } from './publication-retry-policy.mjs'
 
 export class SharingPublicationCoordinator {
   constructor({ repository, publicationService, effectiveEnabled = true, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout }) {
@@ -54,24 +53,34 @@ export class SharingPublicationCoordinator {
     const settings = this.repository.getSettings()
     if (!settings.connectionEnabled || settings.enrollmentState !== 'connected') return
     const operation = this.repository.nextOperation(this.now())
-    if (!operation) return
+    if (!operation) {
+      const availableAtMs = this.repository.nextOperationAvailableAt?.()
+      if (Number.isSafeInteger(availableAtMs)) this.schedule(Math.max(1, availableAtMs - this.now()))
+      return
+    }
+    let nextDelay = 1000
     try {
       if (operation.kind === 'publish') await this.publicationService.executePublish(operation)
       else if (operation.kind === 'unpublish' || operation.kind === 'delete') await this.publicationService.executeLifecycle(operation)
       else throw Object.assign(new Error('Unsupported sharing operation.'), { code: 'sharing-operation-unsupported' })
     } catch (error) {
       const attemptCount = operation.attemptCount + 1
-      const retryable = attemptCount < MAX_ATTEMPTS && !String(error?.code ?? '').includes('unsupported')
+      const classification = classifyPublicationFailure(error, attemptCount)
+      const retryable = classification.disposition !== 'terminal'
+      const delay = publicationRetryDelay(classification, attemptCount, error?.retryAfterMs)
+      nextDelay = retryable ? delay : 1000
       this.repository.updateOperation(operation.id, {
         state: retryable ? 'retrying' : 'failed',
         attemptCount,
-        availableAtMs: this.now() + Math.min(15 * 60_000, BASE_DELAY_MS * 2 ** (attemptCount - 1)),
+        availableAtMs: this.now() + delay,
         lastErrorCode: safeCode(error?.code),
       })
-      const share = this.repository.getShare(operation.shareId)
-      if (share) this.publicationService.onStateChanged(this.repository.updateShare(share.id, share.localRevision, { state: 'failed' }))
+      if (!retryable) {
+        const share = this.repository.getShare(operation.shareId)
+        if (share) this.publicationService.onStateChanged(this.repository.updateShare(share.id, share.localRevision, { state: 'failed' }))
+      }
     } finally {
-      if (!this.stopped) this.schedule()
+      if (!this.stopped) this.schedule(nextDelay)
     }
   }
 }

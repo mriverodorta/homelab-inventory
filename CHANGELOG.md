@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- LabGD publications blocked by a temporarily unavailable historical Registry definition now retain and replay the same local operation, remote operation, public ID, request digest, and uploaded blobs until the exact immutable request can complete.
+- Publication completion now converges on its persisted expected logical share revision across activation responses, SSE delivery, crashes, and restarts without double-incrementing or overwriting newer lifecycle state.
+- LabGD installation events now enforce the exact staged/active/unpublished/deleted/expired state contract and canonical ISO timestamps, while all automated tests reject non-loopback network access before transport.
+
 ## [0.16.7] - 2026-08-28
 
 ### Fixed
