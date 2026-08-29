@@ -62,6 +62,7 @@ describe('WASM runtime verifier', () => {
       'server/sharing/privacy-policy.mjs',
       'server/sharing/public-id-service.mjs',
       'server/sharing/publication-coordinator.mjs',
+      'server/sharing/publication-retry-policy.mjs',
       'server/sharing/publication-service.mjs',
       'server/sharing/remote-capabilities.mjs',
       'server/sharing/routes.mjs',
