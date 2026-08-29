@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.8] - 2026-08-29
+
 ### Fixed
 
 - LabGD publications blocked by a temporarily unavailable historical Registry definition now retain and replay the same local operation, remote operation, public ID, request digest, and uploaded blobs until the exact immutable request can complete.

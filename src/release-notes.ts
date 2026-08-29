@@ -714,7 +714,7 @@ const RELEASE_0_16_7_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_8_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'LabGD shares blocked by temporarily unavailable historical Registry definitions now recover using the original operation and permanent public ID instead of becoming terminal after six attempts.',
@@ -724,6 +724,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [
     'Schema 35 persists immutable publication revision intent and sanitized remote replay evidence so interrupted publication can resume deterministically.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1253,9 +1259,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.8',
+    date: '2026-08-29',
+    channel: 'latest',
+    title: 'Deterministic LabGD publication recovery',
+    ...RELEASE_0_16_8_DETAILS,
+  },
+  {
     version: '0.16.7',
     date: '2026-08-28',
-    channel: 'latest',
+    channel: 'release',
     title: 'Reliable, quiet LabGD connections',
     ...RELEASE_0_16_7_DETAILS,
   },
