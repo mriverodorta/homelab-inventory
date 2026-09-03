@@ -1,4 +1,4 @@
-FROM golang:1.26.7-alpine@sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468 AS agent-build
+FROM golang:1.26.8-alpine@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628 AS agent-build
 WORKDIR /agent
 ARG AGENT_VERSION=0.3.4
 ARG AGENT_SOURCE_REVISION=c216bad09aaaea9bb0588cb0a7ebde29b5fd9cb6

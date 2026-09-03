@@ -739,7 +739,9 @@ const RELEASE_0_16_9_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Updated the Express query-processing dependency chain and embedded Agent compiler to remove vulnerabilities reported after the previous release.',
+  ],
   notes: [],
 }
 
