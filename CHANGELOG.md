@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.10] - 2026-09-03
+
 ### Security
 
 - Updated the transitive `qs` runtime dependency to 6.16.0, fixing CVE-2026-82417 and CVE-2026-82562 in both Express query-processing dependency paths, and rebuilt embedded Agent binaries with the Go 1.26.8 security patch.

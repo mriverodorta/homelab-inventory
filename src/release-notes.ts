@@ -737,11 +737,17 @@ const RELEASE_0_16_9_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_10_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Updated the Express query-processing dependency chain and embedded Agent compiler to remove vulnerabilities reported after the previous release.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -1272,9 +1278,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.10',
+    date: '2026-09-03',
+    channel: 'latest',
+    title: 'Runtime security updates',
+    ...RELEASE_0_16_10_DETAILS,
+  },
+  {
     version: '0.16.9',
     date: '2026-08-29',
-    channel: 'latest',
+    channel: 'release',
     title: 'Fair and safe LabGD publication recovery',
     ...RELEASE_0_16_9_DETAILS,
   },
