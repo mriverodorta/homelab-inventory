@@ -747,7 +747,9 @@ const RELEASE_0_16_10_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Switch RJ45 port groups configured for 2.5 Gbps now retain the selected speed after saving and reloading.',
+  ],
   notes: [],
 }
 

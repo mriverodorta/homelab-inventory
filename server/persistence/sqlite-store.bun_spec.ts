@@ -733,6 +733,43 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
+  test('round-trips canonical 2.5 Gbps switch port speeds using the existing UI label', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      const created = store.createInventoryItems({
+        type: 'switch',
+        name: '2.5 Gbps edge switch',
+        ports: Array.from({ length: 4 }, (_, index) => ({
+          id: index + 1,
+          kind: 'switch-port',
+          type: 'rj45',
+          slotNumber: index + 1,
+          role: 'access',
+        } as const)),
+      })
+      const item = Object.values(created.items).find((candidate) => candidate.type === 'switch')!
+
+      const updated = store.updateInventoryItem({ type: 'switch', id: item.id }, {
+        ...item,
+        ports: item.ports!.map((port) => ({ ...port, speed: '2.5G' })),
+      })
+
+      expect(store.core.database.query(`
+        SELECT details.speed_bps AS speedBps
+        FROM item_port_details details
+        JOIN inventory_ports port ON port.id = details.port_id
+        WHERE port.item_id = ?
+        ORDER BY details.slot_number
+      `).all(item.id)).toEqual(Array.from({ length: 4 }, () => ({ speedBps: 2_500_000_000 })))
+      expect(updated.data.items[`switch:${item.id}`].ports?.map((port) => port.speed))
+        .toEqual(['2.5G', '2.5G', '2.5G', '2.5G'])
+      expect(store.getProject().items[`switch:${item.id}`].ports?.map((port) => port.speed))
+        .toEqual(['2.5G', '2.5G', '2.5G', '2.5G'])
+    } finally {
+      store.close()
+    }
+  })
+
   test('invalidates authoritative read models only for canonical mutations', async () => {
     const store = await fixtureStore()
     try {

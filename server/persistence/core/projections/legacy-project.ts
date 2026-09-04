@@ -119,7 +119,7 @@ function vocabulary(database: Database, table: string, id: number | null) {
 
 function speedLabel(value: number | null) {
   if (value == null) return undefined
-  if (value % 1_000_000_000 === 0) return `${value / 1_000_000_000}G`
+  if (value >= 1_000_000_000 && value % 100_000_000 === 0) return `${value / 1_000_000_000}G`
   if (value % 1_000_000 === 0) return `${value / 1_000_000}M`
   return `${value}bps`
 }
