@@ -745,11 +745,17 @@ const RELEASE_0_16_10_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_11_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Switch RJ45 port groups configured for 2.5 Gbps now retain the selected speed after saving and reloading.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -1280,9 +1286,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.11',
+    date: '2026-09-04',
+    channel: 'latest',
+    title: 'Persistent 2.5 Gbps switch ports',
+    ...RELEASE_0_16_11_DETAILS,
+  },
+  {
     version: '0.16.10',
     date: '2026-09-03',
-    channel: 'latest',
+    channel: 'release',
     title: 'Runtime security updates',
     ...RELEASE_0_16_10_DETAILS,
   },

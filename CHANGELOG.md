@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.11] - 2026-09-04
+
 ### Fixed
 
 - Switch RJ45 port groups configured for 2.5 Gbps now retain the selected speed after saving and reloading while continuing to store canonical bits-per-second values.
