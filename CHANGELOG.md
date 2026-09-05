@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.12] - 2026-09-05
+
+### Fixed
+
+- Fixed SQLite authentication lockouts after the first login by preserving required nullable dates when reading sessions, OIDC identities, recovery tokens, invitations, and identity-link requests. Existing installations recover without resetting accounts or sessions, including after restart.
+
 ## [0.16.11] - 2026-09-04
 
 ### Fixed

@@ -21,7 +21,7 @@ import nasV10Fixture from '../../packages/catalog-protocol/test/fixtures/server-
 import networkV11Fixture from '../../packages/catalog-protocol/test/fixtures/network/server-specs-inventory-network-v11.json'
 import { projectLocalItemForCatalog } from '../registry/local-catalog-mapping.mjs'
 import { AuthService } from '../auth/auth-service.mjs'
-import { createAuthenticationStore } from '../auth/model.mjs'
+import { assertAuthenticationStoreShape, createAuthenticationStore } from '../auth/model.mjs'
 import { SessionService } from '../auth/session-service.mjs'
 import { createSharingSourceProvider } from '../sharing/source-provider.mjs'
 import {
@@ -2793,7 +2793,7 @@ describe('SQLite Homelab Inventory store facade', () => {
   })
 
   test('persists owner bootstrap after built-in authorization records already exist', async () => {
-    const store = await fixtureStore((snapshot) => {
+    let store = await fixtureStore((snapshot) => {
       snapshot.authentication = createAuthenticationStore({ setupRequired: true }) as never
     })
     try {
@@ -2835,6 +2835,75 @@ describe('SQLite Homelab Inventory store facade', () => {
         scopeId: 0,
       }])
       expect(bootstrapped.roles.map(({ id, key }: any) => ({ id, key }))).toEqual(initialRoles)
+
+      const sessionRows = store.core.database.query('SELECT * FROM sessions ORDER BY id').all()
+      await expect(authentication.loginLocal({ username: 'missing-user', password: 'wrong-password' }))
+        .rejects.toThrow('Username or password is incorrect.')
+      expect(store.core.database.query('SELECT * FROM sessions ORDER BY id').all()).toEqual(sessionRows)
+      expect((store.getAuthenticationState() as any).securityEvents.at(-1).type).toBe('local-login-failed')
+
+      const filePath = store.core.filePath
+      store.close()
+      store = new SqliteHomelabInventoryStore({
+        core: await openManagedDatabase({ filePath, schemaName: 'core' }),
+        appVersion: '0.16.11',
+        now: () => Date.parse('2026-08-12T01:06:00.000Z'),
+      })
+      const restartedSessions = new SessionService({ store, now: () => new Date('2026-08-12T01:06:00.000Z') })
+      const restartedAuth = new AuthService({ store, sessionService: restartedSessions, now })
+      expect(restartedSessions.authenticateToken(session.token)?.account.id).toBe(1)
+      expect((store.getAuthenticationState() as any).sessions[0].lastSeenAt).toBe('2026-08-12T01:06:00.000Z')
+      await expect(restartedAuth.loginLocal({ username: 'owner', password: 'wrong-password' }))
+        .rejects.toThrow('Username or password is incorrect.')
+      const secondSession = await restartedAuth.loginLocal({ username: 'owner', password: 'A-strong-owner-password-123!' })
+      await restartedAuth.logout({ headers: { cookie: `hli_session=${session.token}` } })
+      expect(restartedSessions.authenticateToken(session.token)).toBeNull()
+      expect(restartedSessions.authenticateToken(secondSession.token)?.account.id).toBe(1)
+      expect((store.getAuthenticationState() as any).sessions[1].revokedAt).toBeNull()
+      expect(() => assertAuthenticationStoreShape(store.getAuthenticationState())).not.toThrow()
+    } finally {
+      store.close()
+    }
+  })
+
+  test.each([null, '2026-08-12T01:00:00.000Z'])('round-trips nullable authentication dates (%s) through SQLite and restart', async (nullableDate) => {
+    let store = await fixtureStore()
+    const timestamp = '2026-08-12T01:00:00.000Z'
+    const expiresAt = '2026-08-13T01:00:00.000Z'
+    try {
+      const project = store.getProject()
+      store.updateAuthentication((draft: any) => {
+        draft.oidcIdentities.push({ id: draft.nextOidcIdentityId++, accountId: 1, issuer: 'https://identity.example.test', subject: 'owner', email: null, createdAt: timestamp, lastLoginAt: nullableDate })
+        draft.sessions.push({ id: draft.nextSessionId++, accountId: 1, tokenHash: 'a'.repeat(64), remember: false, createdAt: timestamp, lastSeenAt: timestamp, idleExpiresAt: expiresAt, absoluteExpiresAt: expiresAt, revokedAt: nullableDate })
+        draft.recoveryTokens.push({ id: draft.nextRecoveryTokenId++, accountId: 1, tokenHash: 'b'.repeat(64), createdAt: timestamp, expiresAt, usedAt: nullableDate })
+        draft.oidcTransactions.push({ id: draft.nextOidcTransactionId++, accountId: 1, tokenHash: 'c'.repeat(64), state: 's'.repeat(32), nonce: 'n'.repeat(32), codeVerifier: 'v'.repeat(32), returnTo: '/', createdAt: timestamp, expiresAt, usedAt: nullableDate })
+        draft.invitations.push({ id: draft.nextInvitationId++, email: 'invitee@example.test', identityType: 'local', status: nullableDate ? 'accepted' : 'pending', tokenHash: 'd'.repeat(64), createdByAccountId: 1, accountId: null, roleIds: [1], createdAt: timestamp, expiresAt, acceptedAt: nullableDate, revokedAt: nullableDate })
+        draft.identityLinkRequests.push({ id: draft.nextIdentityLinkRequestId++, accountId: 1, identityType: 'oidc', status: nullableDate ? 'confirmed' : 'pending', tokenHash: 'e'.repeat(64), createdAt: timestamp, expiresAt, confirmedAt: nullableDate })
+      })
+      const assertDates = () => {
+        const state = store.getAuthenticationState() as any
+        expect(() => assertAuthenticationStoreShape(state)).not.toThrow()
+        for (const [group, fields] of Object.entries({
+          oidcIdentities: ['lastLoginAt'], sessions: ['revokedAt'], recoveryTokens: ['usedAt'],
+          oidcTransactions: ['usedAt'], invitations: ['acceptedAt', 'revokedAt'], identityLinkRequests: ['confirmedAt'],
+        })) {
+          for (const field of fields) expect(state[group][0][field]).toBe(nullableDate)
+        }
+        return state
+      }
+      const before = assertDates()
+      store.updateAuthentication(() => {})
+      expect(assertDates()).toEqual(before)
+      const filePath = store.core.filePath
+      store.close()
+      store = new SqliteHomelabInventoryStore({ core: await openManagedDatabase({ filePath, schemaName: 'core' }), appVersion: '0.16.11', now: () => Date.parse(timestamp) })
+      expect(assertDates()).toEqual(before)
+      store.updateAuthentication(() => {})
+      expect(assertDates()).toEqual(before)
+      expect(store.getProject()).toEqual(project)
+      expect(() => store.updateAuthentication((draft: any) => { delete draft.sessions[0].revokedAt })).toThrow('revokedAt must be null or an ISO timestamp.')
+      expect(() => store.updateAuthentication((draft: any) => { draft.sessions[0].revokedAt = 'invalid' })).toThrow('revokedAt must be null or an ISO timestamp.')
+      expect(assertDates()).toEqual(before)
     } finally {
       store.close()
     }

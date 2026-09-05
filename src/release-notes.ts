@@ -753,6 +753,14 @@ const RELEASE_0_16_11_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_16_12_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Fixed authentication lockouts after the first login or an application restart by preserving nullable authentication dates in SQLite. Existing accounts and sessions recover without a reset.',
+  ],
+  notes: [],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -1286,9 +1294,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.12',
+    date: '2026-09-05',
+    channel: 'latest',
+    title: 'Reliable SQLite authentication',
+    ...RELEASE_0_16_12_DETAILS,
+  },
+  {
     version: '0.16.11',
     date: '2026-09-04',
-    channel: 'latest',
+    channel: 'release',
     title: 'Persistent 2.5 Gbps switch ports',
     ...RELEASE_0_16_11_DETAILS,
   },

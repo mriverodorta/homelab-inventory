@@ -319,52 +319,64 @@ export function projectAuthenticationState(database: Database) {
     createdAt: builtInTimestamp,
     updatedAt: builtInTimestamp,
   }))
-  const accounts = (database.query('SELECT * FROM users ORDER BY id').all() as Row[]).map((account) => defined({
-    id: account.id,
-    username: account.username,
-    email: account.email,
-    displayName: account.display_name,
-    protectedOwner: Boolean(account.protected_owner),
-    active: Boolean(account.active),
-    createdAt: iso(account.created_at_ms),
-    updatedAt: iso(account.updated_at_ms),
+  // Nullable authentication dates are required keys in the store contract.
+  // Keep them outside defined(), which intentionally omits nulls elsewhere.
+  const accounts = (database.query('SELECT * FROM users ORDER BY id').all() as Row[]).map((account) => ({
+    ...defined({
+      id: account.id,
+      username: account.username,
+      email: account.email,
+      displayName: account.display_name,
+      protectedOwner: Boolean(account.protected_owner),
+      active: Boolean(account.active),
+    }),
+    createdAt: iso(account.created_at_ms) ?? null,
+    updatedAt: iso(account.updated_at_ms) ?? null,
   }))
   const extensionFor = (group: string, id: number) => extended.recordExtensions?.[group]?.[String(id)] ?? {}
-  const localCredentials = (database.query('SELECT * FROM credentials ORDER BY id').all() as Row[]).map((credential) => defined({
-    ...extensionFor('localCredentials', credential.id),
-    id: credential.id,
-    accountId: credential.user_id,
-    passwordHash: credential.secret_hash,
-    createdAt: iso(credential.created_at_ms),
-    updatedAt: iso(credential.updated_at_ms),
+  const localCredentials = (database.query('SELECT * FROM credentials ORDER BY id').all() as Row[]).map((credential) => ({
+    ...defined({
+      ...extensionFor('localCredentials', credential.id),
+      id: credential.id,
+      accountId: credential.user_id,
+      passwordHash: credential.secret_hash,
+    }),
+    createdAt: iso(credential.created_at_ms) ?? null,
+    updatedAt: iso(credential.updated_at_ms) ?? null,
   }))
-  const oidcIdentities = (database.query('SELECT * FROM user_identities ORDER BY id').all() as Row[]).map((identity) => defined({
-    ...extensionFor('oidcIdentities', identity.id),
-    id: identity.id,
-    accountId: identity.user_id,
-    issuer: identity.issuer,
-    subject: identity.subject,
-    email: identity.email,
-    createdAt: iso(identity.created_at_ms),
-    lastLoginAt: iso(identity.last_login_at_ms),
+  const oidcIdentities = (database.query('SELECT * FROM user_identities ORDER BY id').all() as Row[]).map((identity) => ({
+    ...defined({
+      ...extensionFor('oidcIdentities', identity.id),
+      id: identity.id,
+      accountId: identity.user_id,
+      issuer: identity.issuer,
+      subject: identity.subject,
+      email: identity.email,
+    }),
+    createdAt: iso(identity.created_at_ms) ?? null,
+    lastLoginAt: iso(identity.last_login_at_ms) ?? null,
   }))
-  const sessions = (database.query('SELECT * FROM sessions ORDER BY id').all() as Row[]).map((session) => defined({
-    ...extensionFor('sessions', session.id),
-    id: session.id,
-    accountId: session.user_id,
-    tokenHash: session.token_hash,
-    remember: Boolean(session.remember),
-    createdAt: iso(session.created_at_ms),
-    lastSeenAt: iso(session.last_seen_at_ms),
-    idleExpiresAt: iso(session.idle_expires_at_ms),
-    absoluteExpiresAt: iso(session.absolute_expires_at_ms),
+  const sessions = (database.query('SELECT * FROM sessions ORDER BY id').all() as Row[]).map((session) => ({
+    ...defined({
+      ...extensionFor('sessions', session.id),
+      id: session.id,
+      accountId: session.user_id,
+      tokenHash: session.token_hash,
+      remember: Boolean(session.remember),
+      createdAt: iso(session.created_at_ms),
+      lastSeenAt: iso(session.last_seen_at_ms),
+      idleExpiresAt: iso(session.idle_expires_at_ms),
+      absoluteExpiresAt: iso(session.absolute_expires_at_ms),
+      userAgent: session.user_agent_hash,
+      ip: session.ip_hash,
+    }),
     revokedAt: iso(session.revoked_at_ms) ?? null,
-    userAgent: session.user_agent_hash,
-    ip: session.ip_hash,
   }))
-  const recoveryTokens = (database.query('SELECT * FROM recovery_tokens ORDER BY id').all() as Row[]).map((token) => defined({
-    ...extensionFor('recoveryTokens', token.id), id: token.id, accountId: token.user_id,
-    tokenHash: token.token_hash, createdAt: iso(token.created_at_ms), expiresAt: iso(token.expires_at_ms),
+  const recoveryTokens = (database.query('SELECT * FROM recovery_tokens ORDER BY id').all() as Row[]).map((token) => ({
+    ...defined({
+      ...extensionFor('recoveryTokens', token.id), id: token.id, accountId: token.user_id,
+      tokenHash: token.token_hash, createdAt: iso(token.created_at_ms), expiresAt: iso(token.expires_at_ms),
+    }),
     usedAt: iso(token.used_at_ms) ?? null,
   }))
   const securityEvents = (database.query('SELECT * FROM security_events ORDER BY id').all() as Row[]).map((event) => {
@@ -375,12 +387,14 @@ export function projectAuthenticationState(database: Database) {
       detail: details.detail ?? event.target, createdAt: iso(event.created_at_ms),
     })
   })
-  const oidcTransactions = (database.query('SELECT * FROM oidc_transactions ORDER BY id').all() as Row[]).map((transaction) => defined({
-    ...extensionFor('oidcTransactions', transaction.id), id: transaction.id,
-    accountId: transaction.user_id, invitationId: transaction.invitation_id,
-    tokenHash: transaction.token_hash, state: transaction.state, nonce: transaction.nonce,
-    codeVerifier: transaction.code_verifier, returnTo: transaction.return_to,
-    createdAt: iso(transaction.created_at_ms), expiresAt: iso(transaction.expires_at_ms),
+  const oidcTransactions = (database.query('SELECT * FROM oidc_transactions ORDER BY id').all() as Row[]).map((transaction) => ({
+    ...defined({
+      ...extensionFor('oidcTransactions', transaction.id), id: transaction.id,
+      accountId: transaction.user_id, invitationId: transaction.invitation_id,
+      tokenHash: transaction.token_hash, state: transaction.state, nonce: transaction.nonce,
+      codeVerifier: transaction.code_verifier, returnTo: transaction.return_to,
+      createdAt: iso(transaction.created_at_ms), expiresAt: iso(transaction.expires_at_ms),
+    }),
     usedAt: iso(transaction.used_at_ms) ?? null,
   }))
   const relationalRoles = (database.query('SELECT * FROM roles ORDER BY id').all() as Row[]).map((role) => defined({
@@ -397,18 +411,22 @@ export function projectAuthenticationState(database: Database) {
     id: assignment.id, accountId: assignment.user_id, roleId: assignment.role_id,
     scopeKind: assignment.scope_kind, scopeId: assignment.scope_id,
   }))
-  const invitations = (database.query('SELECT * FROM invitations ORDER BY id').all() as Row[]).map((invitation) => defined({
-    ...extensionFor('invitations', invitation.id), id: invitation.id, email: invitation.email,
-    identityType: invitation.identity_type, status: invitation.status, tokenHash: invitation.token_hash,
-    createdByAccountId: invitation.created_by_user_id, accountId: invitation.accepted_user_id,
-    roleIds: (database.query('SELECT role_id FROM invitation_roles WHERE invitation_id = ? ORDER BY role_id').all(invitation.id) as Row[]).map((row) => row.role_id),
-    createdAt: iso(invitation.created_at_ms), expiresAt: iso(invitation.expires_at_ms),
+  const invitations = (database.query('SELECT * FROM invitations ORDER BY id').all() as Row[]).map((invitation) => ({
+    ...defined({
+      ...extensionFor('invitations', invitation.id), id: invitation.id, email: invitation.email,
+      identityType: invitation.identity_type, status: invitation.status, tokenHash: invitation.token_hash,
+      createdByAccountId: invitation.created_by_user_id, accountId: invitation.accepted_user_id,
+      roleIds: (database.query('SELECT role_id FROM invitation_roles WHERE invitation_id = ? ORDER BY role_id').all(invitation.id) as Row[]).map((row) => row.role_id),
+      createdAt: iso(invitation.created_at_ms), expiresAt: iso(invitation.expires_at_ms),
+    }),
     acceptedAt: iso(invitation.accepted_at_ms) ?? null, revokedAt: iso(invitation.revoked_at_ms) ?? null,
   }))
-  const identityLinkRequests = (database.query('SELECT * FROM identity_link_requests ORDER BY id').all() as Row[]).map((request) => defined({
-    ...extensionFor('identityLinkRequests', request.id), ...parse(request.details_json, {}), id: request.id,
-    accountId: request.user_id, identityType: request.identity_type, status: request.status,
-    tokenHash: request.token_hash, createdAt: iso(request.created_at_ms), expiresAt: iso(request.expires_at_ms),
+  const identityLinkRequests = (database.query('SELECT * FROM identity_link_requests ORDER BY id').all() as Row[]).map((request) => ({
+    ...defined({
+      ...extensionFor('identityLinkRequests', request.id), ...parse(request.details_json, {}), id: request.id,
+      accountId: request.user_id, identityType: request.identity_type, status: request.status,
+      tokenHash: request.token_hash, createdAt: iso(request.created_at_ms), expiresAt: iso(request.expires_at_ms),
+    }),
     confirmedAt: iso(request.confirmed_at_ms) ?? null,
   }))
   const protectedOwner = accounts.find((account) => account.protectedOwner)
