@@ -1305,14 +1305,14 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.16.13',
     date: '2026-09-08',
-    channel: 'release',
+    channel: 'latest',
     title: 'Persistent Inspector tabs and efficient live updates',
     ...RELEASE_0_16_13_DETAILS,
   },
   {
     version: '0.16.12',
     date: '2026-09-05',
-    channel: 'latest',
+    channel: 'release',
     title: 'Reliable SQLite authentication',
     ...RELEASE_0_16_12_DETAILS,
   },
