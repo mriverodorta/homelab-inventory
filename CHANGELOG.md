@@ -6,6 +6,13 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.13] - 2026-09-08
+
+### Fixed
+
+- Systems inspector tabs and generated agent setup commands now stay open through background updates instead of resetting to Specs. Selecting another host clears the previous host's temporary setup state.
+- Routine agent heartbeat and status events now update the compact fleet cache directly over SSE, including Services and Containers availability, without repeatedly fetching agent status. Lifecycle changes and stream recovery still refresh authoritative snapshots when needed.
+
 ## [0.16.12] - 2026-09-05
 
 ### Fixed

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { boundedTelemetryPayloads, MAX_EVENT_PAYLOAD_BYTES } from './agent-payloads.mjs'
+import { boundedTelemetryPayloads, compactAgentStatus, MAX_EVENT_PAYLOAD_BYTES } from './agent-payloads.mjs'
+import { publicAgentStatus } from '../agent-routes.mjs'
 
 const host = { hostType: 'server', hostId: 7 }
 const status = { state: 'online', connected: true, ageMs: 0 }
@@ -14,6 +15,23 @@ const base = {
 }
 
 describe('Agent live-event payloads', () => {
+  it('uses the HTTP summary projection so changing section availability arrives over SSE', () => {
+    const stored = {
+      ...host, ...status, services: [{ name: 'synthetic-service' }], containers: [],
+      metrics: { system: { operatingSystem: { id: 'alpine' } } },
+    }
+    const store = { getAgentStatusSummary: () => ({ hosts: { 'server:7': stored }, registeredHosts: [host] }) }
+    const compact = compactAgentStatus(store, host)
+    expect(compact).toEqual(publicAgentStatus(store).hosts['server:7'])
+    expect(compact.details).toMatchObject({ services: true, containers: false })
+    expect(compact.services).toBeUndefined()
+    expect(compact.metrics).toBeUndefined()
+    stored.services = []
+    stored.containers = [{ name: 'synthetic-container' }]
+    expect(compactAgentStatus(store, host).details).toMatchObject({ services: false, containers: true })
+    expect(compactAgentStatus(store, { hostType: 'server', hostId: 999 })).toBeNull()
+  })
+
   it('splits production-shaped entity updates without requesting a full resync', () => {
     const changes = Array.from({ length: 400 }, (_, index) => ({
       key: `systemd\0service-${index}`,

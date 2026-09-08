@@ -1,6 +1,6 @@
 import { createToken, hashToken } from './db/agent-auth.mjs'
 import { isRelationalId } from './db/relational-ids.mjs'
-import { agentCommandPlatform } from './agents/command-platform.mjs'
+import { compactAgentHostStatus } from './agents/status-projection.mjs'
 
 const ENROLLMENT_TTL_MS = 24 * 60 * 60 * 1000
 const AGENT_VERSION = '0.2.0'
@@ -610,36 +610,6 @@ const AGENT_DISABLED_MESSAGE = 'Agent features are disabled in public demo mode.
 
 function disabledAgentRoute(_request, response) {
   response.status(403).json({ message: AGENT_DISABLED_MESSAGE })
-}
-
-function compactAgentHostStatus(status) {
-  const metrics = status.metrics ?? {}
-  return {
-    hostType: status.hostType,
-    hostId: status.hostId,
-    ...(status.hostType === 'server' ? { serverId: status.hostId } : {}),
-    state: status.state,
-    connected: status.connected,
-    ageMs: status.ageMs,
-    lastSeenAt: status.lastSeenAt,
-    collectedAt: status.collectedAt ?? null,
-    agentVersion: status.agentVersion,
-    commandPlatform: agentCommandPlatform(metrics.system?.operatingSystem ?? metrics.system?.os),
-    hostname: status.hostname ?? null,
-    droppedSamples: status.droppedSamples,
-    monitoringRevision: status.monitoringRevision,
-    details: {
-      metrics: Boolean(status.metrics || status.cpu || status.memory || status.uptimeSeconds !== undefined),
-      services: Array.isArray(status.services) && status.services.length > 0,
-      containers: Array.isArray(status.containers) && status.containers.length > 0,
-      storage: (Array.isArray(status.storageHealth) && status.storageHealth.length > 0)
-        || (Array.isArray(status.disks) && status.disks.length > 0)
-        || (Array.isArray(metrics.filesystems) && metrics.filesystems.length > 0),
-      network: (Array.isArray(status.network) && status.network.length > 0)
-        || (Array.isArray(metrics.network) && metrics.network.length > 0),
-      hardware: Boolean(status.motherboard),
-    },
-  }
 }
 
 export function publicAgentStatus(store, releaseService = null) {

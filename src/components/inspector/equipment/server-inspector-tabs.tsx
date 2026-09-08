@@ -51,6 +51,7 @@ export function ServerInspectorTabs({
   attentionActions,
   attentionWorkspaceId = null,
   requestedTab,
+  requestedTabRequestId,
 }: {
   project: ProjectState
   server: InventoryItem
@@ -67,6 +68,7 @@ export function ServerInspectorTabs({
   attentionActions: AttentionActions
   attentionWorkspaceId?: number | null
   requestedTab?: string | null
+  requestedTabRequestId?: number
 }) {
   const canViewAgents = usePermission('agents.view')
   const projectId = project.metadata.projectId ?? 1
@@ -99,6 +101,7 @@ export function ServerInspectorTabs({
     <InspectorTabs
       defaultValue="specs"
       requestedValue={requestedTab}
+      requestId={requestedTabRequestId}
       status={<InventoryFormStatus saveError={editor.saveError} />}
       tabs={[
         {

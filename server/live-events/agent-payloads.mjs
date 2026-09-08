@@ -3,10 +3,7 @@ const MAX_EVENT_PAYLOAD_BYTES = 14 * 1024
 export function compactAgentStatus(currentStore, host) {
   const value = currentStore.getAgentStatusSummary({ now: Date.now() }).hosts?.[`${host.hostType}:${host.hostId}`] ?? null
   if (!value) return null
-  return Object.fromEntries([
-    'hostType', 'hostId', 'state', 'connected', 'ageMs', 'lastSeenAt', 'agentVersion',
-    'collectedAt', 'hostname', 'droppedSamples', 'monitoringRevision',
-  ].flatMap((key) => value[key] === undefined ? [] : [[key, value[key]]]))
+  return compactAgentHostStatus(value)
 }
 
 function telemetryPayload(host, status, telemetry) {
@@ -62,3 +59,4 @@ export function boundedTelemetryPayloads(host, status, liveTelemetry) {
 }
 
 export { MAX_EVENT_PAYLOAD_BYTES }
+import { compactAgentHostStatus } from '../agents/status-projection.mjs'

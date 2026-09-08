@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { InventoryItemMetadataEditor } from '@/components/inventory-metadata/inventory-item-metadata-editor'
 import { InspectorInventoryMetadataContext } from '@/components/inspector/inspector-inventory-metadata-context'
 import {
@@ -18,18 +18,30 @@ export function InspectorTabs({
   tabs,
   defaultValue,
   requestedValue,
+  requestId = 0,
   status,
 }: {
   tabs: InspectorTab[]
   defaultValue?: string
   requestedValue?: string | null
+  requestId?: number
   status?: ReactNode
 }) {
   const metadata = useContext(InspectorInventoryMetadataContext)
   const [value, setValue] = useState(defaultValue ?? tabs[0]?.value ?? '')
+  const consumedRequest = useRef<{ value: string; id: number } | null>(null)
   useEffect(() => {
-    if (requestedValue && tabs.some((tab) => tab.value === requestedValue)) setValue(requestedValue)
-  }, [requestedValue, tabs])
+    const available = (candidate: string) => tabs.some((tab) => tab.value === candidate) || (candidate === 'metadata' && Boolean(metadata))
+    if (!requestedValue) consumedRequest.current = null
+    else if ((consumedRequest.current?.value !== requestedValue || consumedRequest.current.id !== requestId) && available(requestedValue)) {
+      consumedRequest.current = { value: requestedValue, id: requestId }
+      setValue(requestedValue)
+      return
+    }
+    if (tabs.length > 0 && !available(value)) {
+      setValue(defaultValue && available(defaultValue) ? defaultValue : tabs[0].value)
+    }
+  }, [requestedValue, requestId, tabs, metadata, value, defaultValue])
 
   if (tabs.length === 0) {
     return null

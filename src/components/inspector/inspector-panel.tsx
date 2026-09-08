@@ -83,13 +83,14 @@ export function InspectorPanel({
   onRequestNasPowerConfigurationChange = () => undefined,
   onSetWarningIgnored = () => undefined,
 }: InspectorPanelProps) {
-  const [requestedItemTab, setRequestedItemTab] = useState<{ itemId: string; tab: string } | null>(null)
+  const [requestedItemTab, setRequestedItemTab] = useState<{ itemId: string; tab: string; requestId: number } | null>(null)
   const [copyConfigurationOpen, setCopyConfigurationOpen] = useState(false)
   useEffect(() => {
     const requestTab = (event: Event) => {
       const detail = (event as CustomEvent<{ itemId?: unknown; tab?: unknown }>).detail
       if (typeof detail?.itemId !== 'string' || typeof detail.tab !== 'string') return
-      setRequestedItemTab({ itemId: detail.itemId, tab: detail.tab })
+      const { itemId, tab } = detail
+      setRequestedItemTab((current) => ({ itemId, tab, requestId: (current?.requestId ?? 0) + 1 }))
     }
     window.addEventListener('homelab-inventory:inspector-tab', requestTab)
     return () => window.removeEventListener('homelab-inventory:inspector-tab', requestTab)
@@ -314,7 +315,7 @@ export function InspectorPanel({
                 onSaved: onInventoryMetadataSaved,
                 onOpenSettings: canManageMetadata ? onOpenInventoryMetadataSettings : undefined,
               } : null}>
-              <section className="space-y-4">
+              <section key={`${project.metadata.projectId ?? 1}:${attentionWorkspaceId ?? 'all'}:${selectedItemRuntimeKey ?? selectedConnectionId ?? 'none'}`} className="space-y-4">
           {selectedConnection ? (
             <ConnectionDetails
               project={project}
@@ -342,6 +343,7 @@ export function InspectorPanel({
                   attentionActions={{ onOpenAudit, onOpenNotifications, onOpenRegistryUpdates }}
                   attentionWorkspaceId={attentionWorkspaceId}
                   requestedTab={requestedTab}
+                  requestedTabRequestId={requestedItemTab?.requestId}
                 />
               ) : selectedItem.type === 'switch' ? (
                 <SwitchInspectorTabs
@@ -376,6 +378,7 @@ export function InspectorPanel({
                   attentionActions={{ onOpenAudit, onOpenNotifications, onOpenRegistryUpdates }}
                   attentionWorkspaceId={attentionWorkspaceId}
                   requestedTab={requestedTab}
+                  requestedTabRequestId={requestedItemTab?.requestId}
                 />
               ) : selectedItem.type === 'patchPanel' ? (
                 <PatchPanelInspectorTabs
@@ -410,6 +413,7 @@ export function InspectorPanel({
                   attentionActions={{ onOpenAudit, onOpenNotifications, onOpenRegistryUpdates }}
                   attentionWorkspaceId={attentionWorkspaceId}
                   requestedTab={requestedTab}
+                  requestedTabRequestId={requestedItemTab?.requestId}
                 />
               ) : selectedItem.type === 'monitor'
                 || selectedItem.type === 'ups'

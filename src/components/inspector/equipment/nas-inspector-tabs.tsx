@@ -66,6 +66,7 @@ export function NasInspectorTabs({
   attentionActions,
   attentionWorkspaceId = null,
   requestedTab,
+  requestedTabRequestId,
 }: {
   project: ProjectState
   item: InventoryItem
@@ -89,6 +90,7 @@ export function NasInspectorTabs({
   attentionActions: AttentionActions
   attentionWorkspaceId?: number | null
   requestedTab?: string | null
+  requestedTabRequestId?: number
 }) {
   const canViewAgents = usePermission('agents.view')
   const projectId = project.metadata.projectId ?? 1
@@ -141,6 +143,7 @@ export function NasInspectorTabs({
     <InspectorTabs
       defaultValue="specs"
       requestedValue={requestedTab}
+      requestId={requestedTabRequestId}
       status={<InventoryFormStatus saveError={editor.saveError} />}
       tabs={[
         {

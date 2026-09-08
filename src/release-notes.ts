@@ -761,6 +761,15 @@ const RELEASE_0_16_12_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_16_13_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Inspector tabs and agent setup commands stay open during background updates, including when opening a host from Systems. Switching hosts clears the previous host\'s temporary setup state.',
+    'Routine agent updates arrive directly over SSE without repeatedly fetching fleet status, while keeping Services and Containers availability current.',
+  ],
+  notes: [],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -1293,6 +1302,13 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
+  {
+    version: '0.16.13',
+    date: '2026-09-08',
+    channel: 'release',
+    title: 'Persistent Inspector tabs and efficient live updates',
+    ...RELEASE_0_16_13_DETAILS,
+  },
   {
     version: '0.16.12',
     date: '2026-09-05',

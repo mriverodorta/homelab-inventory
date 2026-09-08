@@ -286,6 +286,7 @@ export function PcBuildInspectorTabs({
   attentionActions,
   attentionWorkspaceId = null,
   requestedTab,
+  requestedTabRequestId,
 }: {
   project: ProjectState
   item: InventoryItem
@@ -304,6 +305,7 @@ export function PcBuildInspectorTabs({
   attentionActions: AttentionActions
   attentionWorkspaceId?: number | null
   requestedTab?: string | null
+  requestedTabRequestId?: number
 }) {
   const canViewAgents = usePermission('agents.view')
   const projectId = project.metadata.projectId ?? 1
@@ -335,6 +337,7 @@ export function PcBuildInspectorTabs({
     <InspectorTabs
       defaultValue="specs"
       requestedValue={requestedTab}
+      requestId={requestedTabRequestId}
       status={<InventoryFormStatus saveError={editor.saveError} />}
       tabs={[
         {

@@ -587,7 +587,7 @@ function renderInspector({
     },
   })
 
-  const renderResult = render(
+  const inspectorElement = (overrides: Partial<InspectorPanelProps> = {}) => (
     <QueryClientProvider client={queryClient}>
       <InspectorPanel
         project={projectOverride}
@@ -620,12 +620,15 @@ function renderInspector({
         onRemoveConnection={onRemoveConnection}
         onRequestNasPowerConfigurationChange={onRequestNasPowerConfigurationChange}
         onSetWarningIgnored={onSetWarningIgnored}
+        {...overrides}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
+  const renderResult = render(inspectorElement())
 
   return {
     ...renderResult,
+    rerenderInspector: (overrides: Partial<InspectorPanelProps>) => renderResult.rerender(inspectorElement(overrides)),
     onUpdateProject,
     onUpdateItem,
     onUpdateItemProperties,
@@ -1172,6 +1175,36 @@ describe('InspectorPanel', () => {
     expect(screen.getByLabelText('Host operating system')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Setup agent' })).toBeInTheDocument()
     expect(createAgentEnrollment).not.toHaveBeenCalled()
+  })
+
+  it('preserves Systems agent setup across live updates and clears it when selecting another host', async () => {
+    const user = userEvent.setup()
+    vi.mocked(createAgentEnrollment).mockResolvedValueOnce({
+      enrollmentId: 9, expiresAt: '2026-09-08T12:00:00.000Z', endpoint: 'https://inventory.example.test',
+      installCommand: 'test-enrollment-command',
+      installCommands: { linux: 'test-enrollment-command', alpine: 'alpine-command', freebsd: 'freebsd-command' },
+      agentVersion: '0.3.4',
+    })
+    const view = renderInspector({ selectedItemId: 'server:1' })
+    act(() => window.dispatchEvent(new CustomEvent('homelab-inventory:inspector-tab', {
+      detail: { itemId: 'server:1', tab: 'specs' },
+    })))
+    await user.click(screen.getByRole('tab', { name: 'Agent' }))
+    await user.click(await screen.findByRole('button', { name: 'Setup agent' }))
+    expect(await screen.findByLabelText('Agent install command')).toHaveValue('test-enrollment-command')
+    for (let ageMs = 1; ageMs <= 3; ageMs++) {
+      view.rerenderInspector({ layout: 'systems-split', agentStatus: {
+        hosts: { 'server:2': { state: 'online', connected: true, ageMs } }, registeredHosts: [],
+      } })
+      expect(screen.getByRole('tab', { name: 'Agent' })).toHaveAttribute('data-state', 'active')
+      expect(screen.getByLabelText('Agent install command')).toHaveValue('test-enrollment-command')
+    }
+    const otherHost = { ...project.items['server:1'], id: 99, key: 'server:99', name: 'Other test host' } as InventoryItem
+    view.rerenderInspector({ selectedItemId: 'server:99', project: { ...project, items: { ...project.items, 'server:99': otherHost } } })
+    await user.click(screen.getByRole('tab', { name: 'Agent' }))
+    expect(await screen.findByRole('button', { name: 'Setup agent' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Agent install command')).not.toBeInTheDocument()
+    expect(createAgentEnrollment).toHaveBeenCalledTimes(1)
   })
 
   it('offers Alpine setup and displays the exact root-shell command returned by the backend', async () => {
