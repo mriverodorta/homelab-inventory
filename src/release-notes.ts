@@ -770,7 +770,7 @@ const RELEASE_0_16_13_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_14_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Updated the authorization library\'s CSV parser to fix CVE-2026-85063 while preserving existing permission checks.',
@@ -778,6 +778,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [
     'Fresh build environments now prepare verified engine artifacts reliably, with native ARM pull-request checks, CPU-aware test workers, and isolated cold-start and migration regression coverage.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1307,9 +1313,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.14',
+    date: '2026-09-09',
+    channel: 'latest',
+    title: 'Security patch and reliable release validation',
+    ...RELEASE_0_16_14_DETAILS,
+  },
+  {
     version: '0.16.13',
     date: '2026-09-08',
-    channel: 'latest',
+    channel: 'release',
     title: 'Persistent Inspector tabs and efficient live updates',
     ...RELEASE_0_16_13_DETAILS,
   },
