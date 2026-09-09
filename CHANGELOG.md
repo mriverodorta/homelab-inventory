@@ -14,6 +14,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 - Updated Vitest to 5.0.0 with a synchronized Bun lockfile so frozen dependency installation and pull-request CI remain reproducible.
 
+### Fixed
+
+- Cold release-artifact preparation now creates the canonical WASM destination directory on fresh machines. PR CI uses a native ARM runner and includes artifact-store regressions in the standard test suite.
+
 ## [0.16.13] - 2026-09-08
 
 ### Fixed

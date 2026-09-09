@@ -775,7 +775,9 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   fixes: [
     'Updated the authorization library\'s CSV parser to fix CVE-2026-85063 while preserving existing permission checks.',
   ],
-  notes: [],
+  notes: [
+    'Fresh build environments now prepare verified engine artifacts reliably, with native ARM pull-request checks and cold-start regression coverage.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
