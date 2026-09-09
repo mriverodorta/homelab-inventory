@@ -773,7 +773,9 @@ const RELEASE_0_16_13_DETAILS: UnreleasedReleaseNotes = {
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
-  notes: [],
+  notes: [
+    'Fresh build environments now prepare verified engine artifacts reliably, with native ARM pull-request checks and cold-start regression coverage.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

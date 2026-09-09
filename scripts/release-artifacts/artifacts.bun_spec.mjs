@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { computeArtifactFingerprint } from './fingerprint.mjs'
 import { ensureWasmArtifact, materializeWasmArtifact } from './store.mjs'
+import { releasePaths } from '../local-release/config.mjs'
 
 async function fixture() {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-release-artifact-'))
@@ -22,8 +23,7 @@ async function fixture() {
     paths: {
       supportRoot,
       cacheRoot,
-      artifactsRoot: path.join(supportRoot, 'artifacts'),
-      portableArtifactsDir: path.join(supportRoot, 'artifacts', 'current'),
+      ...releasePaths({ HOMELAB_RELEASE_HOME: supportRoot, HOMELAB_RELEASE_CACHE: cacheRoot }),
     },
     contract: {
       id: 'wasm',
@@ -71,6 +71,8 @@ describe('portable release artifacts', () => {
     try {
       const first = await ensureWasmArtifact({ ...context, contract: context.contract, build })
       const second = await ensureWasmArtifact({ ...context, contract: context.contract, build })
+      expect(first.reused).toBe(false)
+      expect(second.reused).toBe(true)
       expect(builds).toBe(1)
       expect(second.sha256).toBe(first.sha256)
 
@@ -78,7 +80,24 @@ describe('portable release artifacts', () => {
       const repaired = await ensureWasmArtifact({ ...context, contract: context.contract, build })
       expect(builds).toBe(2)
       expect(repaired.sha256).not.toBe(first.sha256)
-      expect(await fs.readdir(context.paths.artifactsRoot)).toEqual(['current'])
+      expect(await fs.readdir(context.paths.artifactsRoot)).toEqual(['wasm'])
+      expect(await fs.readdir(path.dirname(context.paths.portableArtifactsDir))).toEqual(['current'])
+    } finally {
+      await fs.rm(context.directory, { recursive: true, force: true })
+    }
+  })
+
+  test('failed cold builds clean staging files and can be retried from an empty store', async () => {
+    const context = await fixture()
+    try {
+      await expect(ensureWasmArtifact({ ...context, build: async ({ destination }) => {
+        await fakeBuild(destination)
+        throw new Error('injected build failure')
+      } })).rejects.toThrow('injected build failure')
+      expect(await fs.readdir(path.dirname(context.paths.portableArtifactsDir))).toEqual([])
+      const receipt = await ensureWasmArtifact({ ...context, build: ({ destination }) => fakeBuild(destination) })
+      expect(receipt.reused).toBe(false)
+      expect(await fs.readFile(receipt.artifact, 'utf8')).toBe('canonical-wasm')
     } finally {
       await fs.rm(context.directory, { recursive: true, force: true })
     }

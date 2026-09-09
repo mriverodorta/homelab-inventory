@@ -77,8 +77,9 @@ export async function ensureWasmArtifact({
   const existing = await readVerifiedReceipt(paths, inputFingerprint, contract.id)
   if (existing) return { ...existing, reused: true }
 
-  await fs.mkdir(paths.artifactsRoot, { recursive: true, mode: 0o700 })
-  const temporary = path.join(paths.artifactsRoot, `.building-${process.pid}-${randomUUID()}`)
+  const artifactParent = path.dirname(paths.portableArtifactsDir)
+  await fs.mkdir(artifactParent, { recursive: true, mode: 0o700 })
+  const temporary = path.join(artifactParent, `.building-${process.pid}-${randomUUID()}`)
   await fs.rm(temporary, { recursive: true, force: true })
   await fs.mkdir(temporary, { recursive: true, mode: 0o700 })
   try {
