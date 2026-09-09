@@ -774,7 +774,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
   notes: [
-    'Fresh build environments now prepare verified engine artifacts reliably, with native ARM pull-request checks and cold-start regression coverage.',
+    'Fresh build environments now prepare verified engine artifacts reliably, with native ARM pull-request checks, CPU-aware test workers, and isolated cold-start and migration regression coverage.',
   ],
 }
 

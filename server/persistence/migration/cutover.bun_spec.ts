@@ -79,15 +79,13 @@ async function context() {
 }
 
 describe('atomic SQLite persistence cutover', () => {
-  test('keeps legacy sources authoritative and marker-free across every injected interruption', async () => {
-    for (const stage of CUTOVER_STAGES) {
-      const current = await context()
-      const before = await hashLegacyData(current.dataDir)
-      await expect(ensureSqlitePersistence({ ...current.options, failAtStage: stage })).rejects.toThrow(stage)
-      expect(await hashLegacyData(current.dataDir)).toEqual(before)
-      expect(await readActivationMarker(current.dataDir)).toBeNull()
-      await expect(stat(join(current.dataDir, '.sqlite-migration.lock'))).rejects.toMatchObject({ code: 'ENOENT' })
-    }
+  test.each(CUTOVER_STAGES)('keeps legacy sources authoritative and marker-free after interruption at %s', async (stage) => {
+    const current = await context()
+    const before = await hashLegacyData(current.dataDir)
+    await expect(ensureSqlitePersistence({ ...current.options, failAtStage: stage })).rejects.toThrow(stage)
+    expect(await hashLegacyData(current.dataDir)).toEqual(before)
+    expect(await readActivationMarker(current.dataDir)).toBeNull()
+    await expect(stat(join(current.dataDir, '.sqlite-migration.lock'))).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   test('retries from clean staging, activates once, and then reopens idempotently', async () => {
