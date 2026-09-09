@@ -6,6 +6,14 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Security
+
+- Updated Casbin's transitive `csv-parse` dependency to 7.0.2 to fix CVE-2026-85063, with regression coverage for prototype replacement and authorization policy compatibility.
+
+### Maintenance
+
+- Updated Vitest to 5.0.0 with a synchronized Bun lockfile so frozen dependency installation and pull-request CI remain reproducible.
+
 ## [0.16.13] - 2026-09-08
 
 ### Fixed

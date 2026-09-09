@@ -33,6 +33,8 @@ The container preflight is mandatory for `main` and `stable`. It smoke-tests and
 ## Pull Requests
 
 - Keep changes focused.
+- For dependency updates, run `bun install` and commit `bun.lock` together with `package.json`, then verify `bun install --frozen-lockfile`. This also applies to Dependabot updates; do not disable frozen installation to make CI pass.
+- Security overrides must pin a patched version and include compatibility tests for the dependency that consumes it. Recheck them when upgrading that parent dependency; the current `csv-parse` override protects Casbin until its own supported range includes the fix.
 - Include tests for behavior changes when practical.
 - Update docs when changing deployment, data, or user-facing workflows.
 - Do not commit real homelab data, secrets, tokens, screenshots with private IPs, or local `/data` files.

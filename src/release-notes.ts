@@ -772,7 +772,9 @@ const RELEASE_0_16_13_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Updated the authorization library\'s CSV parser to fix CVE-2026-85063 while preserving existing permission checks.',
+  ],
   notes: [],
 }
 
