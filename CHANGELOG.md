@@ -17,6 +17,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Fixed
 
 - Cold release-artifact preparation now creates the canonical WASM destination directory on fresh machines. PR CI uses a native ARM runner and includes artifact-store regressions in the standard test suite.
+- Test workers now respect the machine's CPU budget, and SQLite cutover interruption cases run independently so smaller CI runners do not race timed-out work against fixture cleanup.
 
 ## [0.16.13] - 2026-09-08
 
