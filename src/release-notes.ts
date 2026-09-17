@@ -780,11 +780,17 @@ const RELEASE_0_16_14_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_15_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Updated HTTP compression to fix CVE-2026-87776: interrupted compressed responses now release their native compression streams, preventing memory exhaustion while keeping live SSE updates uncompressed.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -1315,9 +1321,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.15',
+    date: '2026-09-17',
+    channel: 'latest',
+    title: 'HTTP compression security patch',
+    ...RELEASE_0_16_15_DETAILS,
+  },
+  {
     version: '0.16.14',
     date: '2026-09-09',
-    channel: 'latest',
+    channel: 'release',
     title: 'Security patch and reliable release validation',
     ...RELEASE_0_16_14_DETAILS,
   },

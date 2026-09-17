@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.15] - 2026-09-17
+
 ### Security
 
 - Updated `compression` to 1.8.2 with a synchronized Bun lockfile to fix CVE-2026-87776, a native-memory leak on premature response close. Regression tests cover repeated gzip, Brotli, and deflate disconnects and unbuffered SSE delivery.
