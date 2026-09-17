@@ -6,6 +6,14 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Security
+
+- Updated `compression` to 1.8.2 with a synchronized Bun lockfile to fix CVE-2026-87776, a native-memory leak on premature response close. Regression tests cover repeated gzip, Brotli, and deflate disconnects and unbuffered SSE delivery.
+
+### Maintenance
+
+- Updated scheduled CodeQL initialization and analysis together to 4.38.0 with matching immutable action pins.
+
 ## [0.16.14] - 2026-09-09
 
 ### Security

@@ -782,7 +782,9 @@ const RELEASE_0_16_14_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Updated HTTP compression to fix CVE-2026-87776: interrupted compressed responses now release their native compression streams, preventing memory exhaustion while keeping live SSE updates uncompressed.',
+  ],
   notes: [],
 }
 

@@ -1,10 +1,10 @@
-import { brotliDecompressSync, gunzipSync } from 'node:zlib'
+import zlib, { brotliDecompressSync, gunzipSync } from 'node:zlib'
 import fs from 'node:fs/promises'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import express from 'express'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createResponseCompression, registerProductionAssets } from './http-delivery.mjs'
 
 const servers = new Set()
@@ -41,6 +41,78 @@ afterEach(async () => {
 })
 
 describe('production HTTP delivery', () => {
+  it.each([
+    ['gzip', 'createGzip'],
+    ['br', 'createBrotliCompress'],
+    ['deflate', 'createDeflate'],
+  ])('destroys the %s stream when the client aborts an unfinished response', async (encoding, factory) => {
+    const streams = []
+    const createStream = zlib[factory]
+    const spy = vi.spyOn(zlib, factory).mockImplementation((...args) => {
+      const stream = createStream(...args)
+      streams.push(stream)
+      return stream
+    })
+    const app = express()
+    app.use(createResponseCompression())
+    app.get('/unfinished', (_request, response) => {
+      response.type('text/plain').write('inventory '.repeat(2_000))
+      response.flush()
+    })
+    const port = await listen(app)
+    try {
+      for (let index = 0; index < 3; index += 1) {
+        const headers = await new Promise((resolve, reject) => {
+          const client = http.get({ host: '127.0.0.1', port, path: '/unfinished', headers: { 'Accept-Encoding': encoding } }, (response) => {
+            response.once('data', () => {
+              response.destroy()
+              resolve(response.headers)
+            })
+            response.on('error', reject)
+          })
+          client.on('error', reject)
+          client.setTimeout(2_000, () => client.destroy(new Error('Compressed response did not deliver a chunk.')))
+        })
+        expect(headers['content-encoding']).toBe(encoding)
+        await vi.waitFor(() => {
+          expect(streams).toHaveLength(index + 1)
+          expect(streams.every((stream) => stream.destroyed)).toBe(true)
+        })
+      }
+    } finally {
+      spy.mockRestore()
+      for (const stream of streams) stream.destroy()
+    }
+  })
+
+  it('delivers an SSE event before the response ends without creating a compression stream', async () => {
+    const spy = vi.spyOn(zlib, 'createGzip')
+    const app = express()
+    app.use(createResponseCompression())
+    const event = `data: ${'x'.repeat(2_000)}\n\n`
+    app.get('/stream', (_request, response) => {
+      response.type('text/event-stream').write(event)
+    })
+    const port = await listen(app)
+    try {
+      const result = await new Promise((resolve, reject) => {
+        const client = http.get({ host: '127.0.0.1', port, path: '/stream', headers: { 'Accept-Encoding': 'gzip' } }, (response) => {
+          response.once('data', (chunk) => {
+            resolve({ body: chunk.toString(), encoding: response.headers['content-encoding'], ended: response.readableEnded })
+            response.destroy()
+          })
+          response.on('error', reject)
+        })
+        client.on('error', reject)
+        client.setTimeout(2_000, () => client.destroy(new Error('SSE event was buffered.')))
+      })
+      expect(result).toEqual({ body: event, encoding: undefined, ended: false })
+      expect(spy).not.toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it.each([
     ['br', brotliDecompressSync],
     ['gzip', gunzipSync],
