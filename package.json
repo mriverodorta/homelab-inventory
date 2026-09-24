@@ -88,7 +88,7 @@
     "express-rate-limit": "^8.6.1",
     "helmet": "^8.3.0",
     "lowdb": "^7.0.1",
-    "lru-cache": "11.5.2",
+    "lru-cache": "11.5.3",
     "lucide-react": "^1.28.0",
     "openid-client": "^6.8.4",
     "radix-ui": "^1.6.7",

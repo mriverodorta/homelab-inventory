@@ -6,6 +6,11 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Maintenance
+
+- Updated `lru-cache` to 11.5.3 with a synchronized Bun lockfile and scheduled CodeQL initialization and analysis together to 4.38.1.
+- Dependabot now uses the Bun ecosystem and groups CodeQL steps for version and security updates, preventing manifest-only dependency bumps and mismatched action pins from breaking CI.
+
 ## [0.16.15] - 2026-09-17
 
 ### Security

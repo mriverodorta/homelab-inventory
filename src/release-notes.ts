@@ -791,7 +791,9 @@ const RELEASE_0_16_15_DETAILS: UnreleasedReleaseNotes = {
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
-  notes: [],
+  notes: [
+    'Updated the runtime cache dependency and scheduled code analysis, and corrected automated dependency updates to keep Bun lockfiles and paired CodeQL steps synchronized.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
