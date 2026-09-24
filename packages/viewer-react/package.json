@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@homelab-inventory/viewer-model": "0.1.0",
-    "@xyflow/react": "^12.11.2",
+    "@xyflow/react": "^12.11.6",
     "lucide-react": "^1.28.0"
   },
   "peerDependencies": {
