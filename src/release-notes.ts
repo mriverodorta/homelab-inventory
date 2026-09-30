@@ -795,6 +795,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   ],
   notes: [
     'Updated React, canvas rendering, virtualized lists, and build and test tooling; paired React dependencies now update together with compatibility checks.',
+    'Local staging validation releases disconnected event streams instead of retaining connections until its live-update capacity is exhausted.',
     'Updated the runtime cache dependency and scheduled code analysis, and corrected automated dependency updates to keep Bun lockfiles and paired CodeQL steps synchronized.',
   ],
 }

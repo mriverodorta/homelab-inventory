@@ -46,6 +46,7 @@ Bun.serve({
       const response = await fetch(new URL(source.pathname + source.search, targetOrigin), {
         method: request.method,
         headers,
+        signal: request.signal,
         body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
         redirect: 'manual',
       })

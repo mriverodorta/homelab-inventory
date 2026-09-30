@@ -46,6 +46,49 @@ describe('local release staging', () => {
     expect(command).not.toContain('--privileged')
   })
 
+  test('ingress releases upstream SSE connections when the browser disconnects', async () => {
+    let active = 0
+    let notifyClosed
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1', port: 0,
+      fetch(request) {
+        if (active >= 2) return new Response('capacity', { status: 503 })
+        active += 1
+        request.signal.addEventListener('abort', () => {
+          active -= 1
+          notifyClosed?.()
+        }, { once: true })
+        return new Response(new ReadableStream({
+          start(controller) { controller.enqueue(new TextEncoder().encode('event: ready\ndata: {}\n\n')) },
+        }), { headers: { 'content-type': 'text/event-stream' } })
+      },
+    })
+    let ingress
+    try {
+      // Execute the exact container proxy script, substituting only its listener and upstream address.
+      const script = stagingIngressRunCommand(candidate).at(-1)
+      new Function('Bun', 'fetch', script)(
+        { serve(options) { ingress = Bun.serve({ ...options, hostname: '127.0.0.1', port: 0 }) } },
+        (url, options) => fetch(new URL(new URL(url).pathname, upstream.url), options),
+      )
+      for (let index = 0; index < 4; index += 1) {
+        const controller = new AbortController()
+        const response = await fetch(ingress.url, { signal: controller.signal })
+        expect(response.status).toBe(200)
+        const reader = response.body.getReader()
+        expect((await reader.read()).done).toBe(false)
+        const closed = new Promise((resolve) => { notifyClosed = () => resolve(true) })
+        controller.abort()
+        await reader.cancel().catch(() => {})
+        expect(await Promise.race([closed, Bun.sleep(1000).then(() => false)])).toBe(true)
+        expect(active).toBe(0)
+      }
+    } finally {
+      ingress?.stop(true)
+      upstream.stop(true)
+    }
+  })
+
   test('binds approval to source, snapshot, image, and post-start data', () => {
     const identity = {
       revision: candidate.revision,
