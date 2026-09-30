@@ -8,10 +8,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ### Security
 
+- Updated `express-rate-limit` to 8.7.0, correcting IPv4-mapped address normalization and preserving IPv6 subnet grouping for dotted-quad suffixes. Regression tests demonstrate both failures before the update and correct grouping afterward.
 - Updated the rate limiter's `ip-address` dependency to 10.7.1 for CVE-2026-101910, CVE-2026-101911, CVE-2026-101912, and CVE-2026-101913, and authorization's `brace-expansion` dependency to 5.0.12 for CVE-2026-102276, CVE-2026-102277, and CVE-2026-102278. Regression coverage verifies address classification, rate-limit keys, authorization glob matching, and bounded malformed-input handling.
 
 ### Maintenance
 
+- Reviewed Dependabot PRs #55-#59: updated shadcn CLI to 4.21.0 without migrating existing components, Oxlint to 1.85.0, tar-stream to 3.2.1, and Vitest to 5.0.2. Existing runtime security overrides are retained.
 - Updated React and React DOM together to 19.3.0 with matching types, React Flow to 12.11.6, the virtual-list renderer to 3.14.13, and the React build and test tooling. Dependabot now groups React with its renderer and types, with regression checks for compatible installed versions.
 - Updated both scheduled CodeQL actions to 4.38.2 using the same immutable revision.
 - Local staging ingress now cancels upstream event streams when the browser disconnects, preventing exhausted SSE capacity during repeated validation and tab switching.

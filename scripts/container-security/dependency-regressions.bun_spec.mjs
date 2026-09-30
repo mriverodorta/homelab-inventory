@@ -10,6 +10,19 @@ const { Address4, Address6, AddressError } = limiterRequire('ip-address')
 const { ipKeyGenerator } = require('express-rate-limit')
 
 describe('rate limiter IP dependency security', () => {
+  test('mapped IPv4 representations share one rate-limit bucket', () => {
+    expect(ipKeyGenerator('::ffff:c000:22a')).toBe(ipKeyGenerator('::ffff:192.0.2.42'))
+    expect(ipKeyGenerator('::ffff:c000:22a')).toBe('192.0.2.42')
+  })
+
+  test('dotted IPv6 suffixes cannot escape the subnet or collide with IPv4 clients', () => {
+    expect(ipKeyGenerator('2001:db8:1234:5678::192.0.2.42')).toBe('2001:db8:1234:5600::/56')
+    expect(ipKeyGenerator('2001:db8:1234:5678::192.0.2.42'))
+      .toBe(ipKeyGenerator('2001:db8:1234:5678::c000:22a'))
+    expect(ipKeyGenerator('2001:db8::192.0.2.42')).not.toBe(ipKeyGenerator('192.0.2.42'))
+    expect(ipKeyGenerator('64:ff9b::192.0.2.42')).toBe('64:ff9b::/56')
+  })
+
   test('cross-family addresses cannot match a subnet (CVE-2026-101912)', () => {
     const v4 = new Address4('32.1.13.184')
     const v6 = new Address6('2001:db8::/32')

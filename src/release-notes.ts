@@ -791,9 +791,11 @@ const RELEASE_0_16_15_DETAILS: UnreleasedReleaseNotes = {
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
+    'Corrected rate-limit grouping for IPv4-mapped IPv6 addresses and dotted IPv6 suffixes so equivalent addresses share a bucket and unrelated clients do not collide.',
     'Patched seven vulnerabilities in transitive IP-address parsing and brace-expansion dependencies used by rate limiting and authorization, with regression coverage for malformed input and address classification.',
   ],
   notes: [
+    'Updated archive typings, component tooling, linting, and the test runner with reproducible dependency versions and rate-limit regression coverage.',
     'Updated React, canvas rendering, virtualized lists, and build and test tooling; paired React dependencies now update together with compatibility checks.',
     'Local staging validation releases disconnected event streams instead of retaining connections until its live-update capacity is exhausted.',
     'Updated the runtime cache dependency and scheduled code analysis, and corrected automated dependency updates to keep Bun lockfiles and paired CodeQL steps synchronized.',
