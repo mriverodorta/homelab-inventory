@@ -788,7 +788,7 @@ const RELEASE_0_16_15_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_16_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Corrected rate-limit grouping for IPv4-mapped IPv6 addresses and dotted IPv6 suffixes so equivalent addresses share a bucket and unrelated clients do not collide.',
@@ -800,6 +800,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Local staging validation releases disconnected event streams instead of retaining connections until its live-update capacity is exhausted.',
     'Updated the runtime cache dependency and scheduled code analysis, and corrected automated dependency updates to keep Bun lockfiles and paired CodeQL steps synchronized.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1329,9 +1335,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.16',
+    date: '2026-09-30',
+    channel: 'latest',
+    title: 'Dependency security and IPv6 rate-limit fixes',
+    ...RELEASE_0_16_16_DETAILS,
+  },
+  {
     version: '0.16.15',
     date: '2026-09-17',
-    channel: 'latest',
+    channel: 'release',
     title: 'HTTP compression security patch',
     ...RELEASE_0_16_15_DETAILS,
   },

@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.16] - 2026-09-30
+
 ### Security
 
 - Updated `express-rate-limit` to 8.7.0, correcting IPv4-mapped address normalization and preserving IPv6 subnet grouping for dotted-quad suffixes. Regression tests demonstrate both failures before the update and correct grouping afterward.
