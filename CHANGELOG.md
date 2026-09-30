@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Security
+
+- Updated the rate limiter's `ip-address` dependency to 10.7.1 for CVE-2026-101910, CVE-2026-101911, CVE-2026-101912, and CVE-2026-101913, and authorization's `brace-expansion` dependency to 5.0.12 for CVE-2026-102276, CVE-2026-102277, and CVE-2026-102278. Regression coverage verifies address classification, rate-limit keys, authorization glob matching, and bounded malformed-input handling.
+
 ### Maintenance
 
 - Updated React and React DOM together to 19.3.0 with matching types, React Flow to 12.11.6, the virtual-list renderer to 3.14.13, and the React build and test tooling. Dependabot now groups React with its renderer and types, with regression checks for compatible installed versions.
