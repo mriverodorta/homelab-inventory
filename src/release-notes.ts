@@ -792,6 +792,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
   notes: [
+    'Updated React, canvas rendering, virtualized lists, and build and test tooling; paired React dependencies now update together with compatibility checks.',
     'Updated the runtime cache dependency and scheduled code analysis, and corrected automated dependency updates to keep Bun lockfiles and paired CodeQL steps synchronized.',
   ],
 }

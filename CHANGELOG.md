@@ -8,6 +8,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ### Maintenance
 
+- Updated React and React DOM together to 19.3.0 with matching types, React Flow to 12.11.6, the virtual-list renderer to 3.14.13, and the React build and test tooling. Dependabot now groups React with its renderer and types, with regression checks for compatible installed versions.
+- Updated both scheduled CodeQL actions to 4.38.2 using the same immutable revision.
 - Updated `lru-cache` to 11.5.3 with a synchronized Bun lockfile and scheduled CodeQL initialization and analysis together to 4.38.1.
 - Dependabot now uses the Bun ecosystem and groups CodeQL steps for version and security updates, preventing manifest-only dependency bumps and mismatched action pins from breaking CI.
 
