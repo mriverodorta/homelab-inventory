@@ -802,7 +802,7 @@ const RELEASE_0_16_16_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_17_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Updated proxy address validation to prevent incorrectly configured IPv6 proxy trust ranges from accepting spoofed IPv4 client addresses (CVE-2026-90711).',
@@ -810,6 +810,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [
     'Updated the query cache and development tools, with regression coverage for proxy trust and the existing application test suite.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1339,9 +1345,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.17',
+    date: '2026-10-07',
+    channel: 'latest',
+    title: 'Proxy trust security patch and dependency updates',
+    ...RELEASE_0_16_17_DETAILS,
+  },
+  {
     version: '0.16.16',
     date: '2026-09-30',
-    channel: 'latest',
+    channel: 'release',
     title: 'Dependency security and IPv6 rate-limit fixes',
     ...RELEASE_0_16_16_DETAILS,
   },

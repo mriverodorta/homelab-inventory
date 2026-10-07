@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.17] - 2026-10-07
+
 ### Security
 
 - Pinned Express's transitive `proxy-addr` dependency to 2.0.8 for CVE-2026-90711. Regression tests reject arbitrary IPv4 and mapped-IPv4 proxy trust through short-prefix IPv6 subnets, prevent forged forwarded client addresses, and retain correctly configured IPv4, mapped-IPv4, and IPv6 trust behavior.
