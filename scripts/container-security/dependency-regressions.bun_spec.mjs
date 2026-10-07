@@ -3,11 +3,54 @@ import { createRequire } from 'node:module'
 import { spawnSync } from 'node:child_process'
 
 const require = createRequire(import.meta.url)
+const expressRequire = createRequire(require.resolve('express'))
+const proxyaddr = expressRequire('proxy-addr')
 const limiterRequire = createRequire(require.resolve('express-rate-limit'))
 const casbinRequire = createRequire(require.resolve('casbin'))
 const minimatchRequire = createRequire(casbinRequire.resolve('minimatch'))
 const { Address4, Address6, AddressError } = limiterRequire('ip-address')
 const { ipKeyGenerator } = require('express-rate-limit')
+
+describe('Express proxy trust dependency security (CVE-2026-90711)', () => {
+  test.each([
+    ['::ffff:10.0.0.0/8'],
+    ['::ffff:0.0.0.0/95'],
+    ['::/1'],
+    ['::ffff:10.0.0.0/8', '192.0.2.0/24'],
+    ['::/1', '192.0.2.0/24'],
+  ])('IPv6 trust %j cannot grant arbitrary IPv4 trust', (...subnets) => {
+    const trust = proxyaddr.compile(subnets)
+    expect(trust('203.0.113.9')).toBe(false)
+    expect(trust('::ffff:203.0.113.9')).toBe(false)
+  })
+
+  test.each(['203.0.113.9', '::ffff:203.0.113.9'])('untrusted peer %s cannot forge forwarded client addresses', (remoteAddress) => {
+    const app = require('express')()
+    app.set('trust proxy', ['::ffff:10.0.0.0/8'])
+    const request = Object.assign(Object.create(app.request), {
+      app,
+      socket: { remoteAddress },
+      headers: { 'x-forwarded-for': '192.0.2.42' },
+    })
+    expect(request.ip).toBe(remoteAddress)
+    expect(request.ips).toEqual([])
+  })
+
+  test('valid mapped, IPv4 and IPv6 subnets still trust only their intended clients', () => {
+    for (const subnet of ['192.0.2.0/24', '::ffff:192.0.2.0/120']) {
+      const trust = proxyaddr.compile(subnet)
+      expect(trust('192.0.2.42')).toBe(true)
+      expect(trust('::ffff:192.0.2.42')).toBe(true)
+      expect(trust('203.0.113.9')).toBe(false)
+      expect(trust('::1')).toBe(false)
+      expect(proxyaddr({ socket: { remoteAddress: '192.0.2.42' }, headers: { 'x-forwarded-for': '203.0.113.9' } }, trust)).toBe('203.0.113.9')
+    }
+    const ipv6Trust = proxyaddr.compile('2001:db8::/32')
+    expect(ipv6Trust('2001:db8::1')).toBe(true)
+    expect(ipv6Trust('2001:db9::1')).toBe(false)
+    expect(ipv6Trust('192.0.2.42')).toBe(false)
+  })
+})
 
 describe('rate limiter IP dependency security', () => {
   test('mapped IPv4 representations share one rate-limit bucket', () => {

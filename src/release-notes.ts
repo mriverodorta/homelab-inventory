@@ -804,8 +804,12 @@ const RELEASE_0_16_16_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
-  notes: [],
+  fixes: [
+    'Updated proxy address validation to prevent incorrectly configured IPv6 proxy trust ranges from accepting spoofed IPv4 client addresses (CVE-2026-90711).',
+  ],
+  notes: [
+    'Updated the query cache and development tools, with regression coverage for proxy trust and the existing application test suite.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

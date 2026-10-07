@@ -6,6 +6,14 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Security
+
+- Pinned Express's transitive `proxy-addr` dependency to 2.0.8 for CVE-2026-90711. Regression tests reject arbitrary IPv4 and mapped-IPv4 proxy trust through short-prefix IPv6 subnets, prevent forged forwarded client addresses, and retain correctly configured IPv4, mapped-IPv4, and IPv6 trust behavior.
+
+### Maintenance
+
+- Reviewed Dependabot PRs #60-#64: updated `@tanstack/react-query` and its core to 5.104.1, `drizzle-kit` to 0.31.11, `jsdom` to 30.1.2, `@testing-library/user-event` to 14.6.7, and `@types/node` to 26.6.4 with synchronized Bun lockfile entries.
+
 ## [0.16.16] - 2026-09-30
 
 ### Security
