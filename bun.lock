@@ -25,7 +25,7 @@
         "helmet": "^8.3.0",
         "lowdb": "^7.0.1",
         "lru-cache": "11.5.3",
-        "lucide-react": "^1.28.0",
+        "lucide-react": "^1.55.0",
         "openid-client": "^6.8.4",
         "radix-ui": "^1.6.7",
         "react": "^19.3.0",
@@ -82,7 +82,7 @@
       "dependencies": {
         "@homelab-inventory/viewer-model": "0.1.0",
         "@xyflow/react": "^12.11.6",
-        "lucide-react": "^1.28.0",
+        "lucide-react": "^1.55.0",
       },
       "peerDependencies": {
         "react": ">=19 <20",
@@ -1100,7 +1100,7 @@
 
     "lru-cache": ["lru-cache@11.5.3", "", {}, "sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg=="],
 
-    "lucide-react": ["lucide-react@1.28.0", "", { "peerDependencies": { "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-fARAFJULsGuDDydjp6+6blekG/sBIM29TerzLjc9bQUKAcEfrSc4ZQKb25KRz4OMKd87cZTb5dgq0w/T6KufVg=="],
+    "lucide-react": ["lucide-react@1.55.0", "", { "peerDependencies": { "@types/react": "*", "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@types/react"] }, "sha512-bSozQHiI3/8q7JvgoqVRGOYUi7fYT3siAZwmZsljjsOH2Husp/2ODdFf/leD+ZC/2yKfn7r8oh6yeoR3ITR5vA=="],
 
     "lz-string": ["lz-string@1.5.0", "", { "bin": "bin/bin.js" }, "sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ=="],
 
