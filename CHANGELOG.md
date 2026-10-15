@@ -6,6 +6,17 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.18] - 2026-10-14
+
+### Security
+
+- Rebuilt bundled Linux and FreeBSD Agent binaries with digest-pinned Go 1.26.9 to address the thirteen Go standard-library vulnerabilities reported by the Docker Security Monitor. Agent source, identity and version remain unchanged.
+
+### Maintenance
+
+- Reviewed Dependabot PRs #65-#70: updated Express to 5.3.0, PostCSS to 8.5.29, Lucide React to 1.55.0, React Flow to 12.12.0 and Zod to 4.6.6 with synchronized workspace manifests and Bun lockfile. Existing runtime security overrides are preserved.
+- Updated scheduled CodeQL initialization and analysis together to 4.38.3 using the same immutable action revision.
+
 ## [0.16.17] - 2026-10-07
 
 ### Security

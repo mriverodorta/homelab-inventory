@@ -812,6 +812,17 @@ const RELEASE_0_16_17_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
+const RELEASE_0_16_18_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Rebuilt bundled Linux and FreeBSD Agent binaries with Go 1.26.9 to address thirteen standard-library vulnerabilities reported by image security monitoring.',
+  ],
+  notes: [
+    'Updated the HTTP server, canvas renderer, icons, schema validation and CSS tooling while preserving existing security dependency overrides.',
+    'Updated both scheduled CodeQL analysis steps together. The embedded Agent version remains 0.3.4; existing host installations are not automatically replaced.',
+  ],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -1345,9 +1356,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.18',
+    date: '2026-10-14',
+    channel: 'latest',
+    title: 'Agent toolchain security and dependency updates',
+    ...RELEASE_0_16_18_DETAILS,
+  },
+  {
     version: '0.16.17',
     date: '2026-10-07',
-    channel: 'latest',
+    channel: 'release',
     title: 'Proxy trust security patch and dependency updates',
     ...RELEASE_0_16_17_DETAILS,
   },
