@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.19] - 2026-10-16
+
 ### Fixed
 
 - Fixed Custom PC motherboard assignment failing with "Assignment references a missing resource group." Motherboard-provided slots now resolve through the board assigned on the same canvas; case and PSU positions are persisted as well.

@@ -823,7 +823,7 @@ const RELEASE_0_16_18_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_19_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Custom PCs now save motherboard, CPU, cooler, RAM, storage, expansion, case and power-supply assignments without missing-resource errors, while keeping motherboard configurations independent per canvas.',
@@ -831,6 +831,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [
     'An automatic SQLite migration adds missing Custom PC resource positions and preserves existing assignments, placements and cables. Assigned motherboard resources remain protected during edits, import and restore.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1360,9 +1366,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.19',
+    date: '2026-10-16',
+    channel: 'latest',
+    title: 'Custom PC motherboard assignment repair',
+    ...RELEASE_0_16_19_DETAILS,
+  },
+  {
     version: '0.16.18',
     date: '2026-10-14',
-    channel: 'latest',
+    channel: 'release',
     title: 'Agent toolchain security and dependency updates',
     ...RELEASE_0_16_18_DETAILS,
   },
