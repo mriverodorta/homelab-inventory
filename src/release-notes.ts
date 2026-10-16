@@ -825,8 +825,12 @@ const RELEASE_0_16_18_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
-  notes: [],
+  fixes: [
+    'Custom PCs now save motherboard, CPU, cooler, RAM, storage, expansion, case and power-supply assignments without missing-resource errors, while keeping motherboard configurations independent per canvas.',
+  ],
+  notes: [
+    'An automatic SQLite migration adds missing Custom PC resource positions and preserves existing assignments, placements and cables. Assigned motherboard resources remain protected during edits, import and restore.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

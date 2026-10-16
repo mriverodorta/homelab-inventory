@@ -894,7 +894,7 @@ export class SqliteHomelabInventoryStore {
       this.core.database.query(
         'DELETE FROM component_assignments WHERE project_id = ? AND workspace_id = ?',
       ).run(this.projectId, this.workspaceId)
-      for (const assignment of submitted.assignments ?? []) {
+      for (const assignment of [...(submitted.assignments ?? [])].sort((a, b) => Number(b.type === 'motherboard') - Number(a.type === 'motherboard') || a.id - b.id)) {
         const host = parseRuntimeItemKey(assignment.serverId, 'Assignment host')
         const item = parseRuntimeItemKey(assignment.itemId, 'Assignment item')
         this.upsertAssignment({
@@ -3576,7 +3576,7 @@ export class SqliteHomelabInventoryStore {
           throw lifecycleError(`Assignment ${assignmentId} does not exist.`, 'invalid-engine-patch', 500)
         }
       }
-      for (const assignment of patch.payload.upsert) this.upsertAssignment(assignment)
+      for (const assignment of [...patch.payload.upsert].sort((a, b) => Number(b.component_type === 'motherboard') - Number(a.component_type === 'motherboard') || a.id - b.id)) this.upsertAssignment(assignment)
       return
     }
 
@@ -4005,16 +4005,19 @@ export class SqliteHomelabInventoryStore {
             AND host_item_id = ? AND resource_slot_id IS NULL
         `).get(allocation.assignmentId, this.projectId, this.workspaceId, allocation.hostItemId)
         if (!assignment) continue
+        const provider = this.assignmentResourceProvider(allocation.hostItemId, allocation.resourceType)
         const slotIds = allocation.positions.map((position) => this.resolveResourceSlot(
-          allocation.hostItemId,
+          provider.itemId,
           allocation.resourceType,
           allocation.groupId ?? null,
           position,
         ))
         this.core.database.query('DELETE FROM component_assignment_slots WHERE assignment_id = ?')
           .run(allocation.assignmentId)
+        this.core.database.query('UPDATE component_assignments SET resource_provider_assignment_id = ? WHERE id = ?')
+          .run(provider.assignmentId, allocation.assignmentId)
         slotIds.forEach((slotId, position) => {
-          insertSlot.run(this.projectId, this.workspaceId, allocation.assignmentId, allocation.hostItemId, slotId, position)
+          insertSlot.run(this.projectId, this.workspaceId, allocation.assignmentId, provider.itemId, slotId, position)
         })
         this.core.database.query('UPDATE component_assignments SET resource_slot_id = ? WHERE id = ?')
           .run(slotIds[0] ?? null, allocation.assignmentId)
@@ -4158,9 +4161,10 @@ export class SqliteHomelabInventoryStore {
     const assignmentId = positiveId(assignment.id, 'Assignment ID')
     const hostItemId = this.resolveItem(assignment.host.item_type, assignment.host.id)
     const componentItemId = this.resolveItem(assignment.item.item_type, assignment.item.id)
+    const provider = this.assignmentResourceProvider(hostItemId, assignment.allocation?.resource_type)
     const slotIds = assignment.allocation
       ? assignment.allocation.positions.map((position: number) => this.resolveResourceSlot(
-          hostItemId,
+          provider.itemId,
           assignment.allocation.resource_type,
           assignment.allocation.group_id,
           position,
@@ -4168,14 +4172,15 @@ export class SqliteHomelabInventoryStore {
       : []
     const result = this.core.database.query(`
       INSERT INTO component_assignments (
-        id, project_id, workspace_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        id, project_id, workspace_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms, resource_provider_assignment_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         project_id = excluded.project_id,
         workspace_id = excluded.workspace_id,
         host_item_id = excluded.host_item_id,
         component_item_id = excluded.component_item_id,
         resource_slot_id = excluded.resource_slot_id,
+        resource_provider_assignment_id = excluded.resource_provider_assignment_id,
         assigned_at_ms = excluded.assigned_at_ms
       WHERE component_assignments.project_id = excluded.project_id
         AND component_assignments.workspace_id = excluded.workspace_id
@@ -4187,6 +4192,7 @@ export class SqliteHomelabInventoryStore {
       componentItemId,
       slotIds[0] ?? null,
       toMilliseconds(assignment.assigned_at, this.now()),
+      provider.assignmentId,
     )
     if (result.changes !== 1) {
       throw lifecycleError(
@@ -4202,8 +4208,23 @@ export class SqliteHomelabInventoryStore {
       ) VALUES (?, ?, ?, ?, ?, ?)
     `)
     slotIds.forEach((slotId: number, position: number) => {
-      insertSlot.run(this.projectId, this.workspaceId, assignmentId, hostItemId, slotId, position)
+      insertSlot.run(this.projectId, this.workspaceId, assignmentId, provider.itemId, slotId, position)
     })
+  }
+
+  private assignmentResourceProvider(hostItemId: number, resourceType?: string) {
+    if (!resourceType || ['motherboard', 'case', 'power'].includes(resourceType)
+      || !this.core.database.query('SELECT id FROM pc_builds WHERE id = ?').get(hostItemId)) {
+      return { itemId: hostItemId, assignmentId: null as number | null }
+    }
+    const boards = this.core.database.query(`
+      SELECT a.id, a.component_item_id FROM component_assignments a
+      JOIN motherboards board ON board.id = a.component_item_id
+      WHERE a.project_id = ? AND a.workspace_id = ? AND a.host_item_id = ?
+      ORDER BY a.id
+    `).all(this.projectId, this.workspaceId, hostItemId) as { id: number; component_item_id: number }[]
+    if (boards.length !== 1) throw lifecycleError('Assign exactly one motherboard before adding PC components.', 'invalid-engine-patch', 409)
+    return { itemId: boards[0].component_item_id, assignmentId: boards[0].id }
   }
 
   private resolveResourceSlot(

@@ -69,7 +69,7 @@ function allocate(records: LegacyRecord[], keyOf: (record: LegacyRecord) => stri
   return result
 }
 
-export function legacyResourceDefinitions(item: LegacyRecord): Array<{ key: string, count: number }> {
+export function legacyResourceDefinitions(item: LegacyRecord, type = item.type ?? item.__type): Array<{ key: string, count: number }> {
   const host = (item.compatibility as any)?.host ?? {}
   const definitions: Array<{ key: string, count: number }> = []
   const scalar = [
@@ -80,6 +80,13 @@ export function legacyResourceDefinitions(item: LegacyRecord): Array<{ key: stri
   ] as const
   for (const [key, count] of scalar) {
     if (Number.isSafeInteger(count) && count > 0) definitions.push({ key, count })
+  }
+  if (type === 'pcBuild') {
+    for (const key of ['motherboard', 'case', 'power']) definitions.push({ key, count: 1 })
+  }
+  if (type === 'motherboard') {
+    const cpu = definitions.find((definition) => definition.key === 'cpu')
+    if (cpu) definitions.push({ key: 'cpu-cooling', count: cpu.count })
   }
   const collections = [
     ['storage', host.storageSlots],

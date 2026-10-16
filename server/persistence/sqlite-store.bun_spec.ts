@@ -125,6 +125,102 @@ async function catalogTemplate(
 }
 
 describe('SQLite Homelab Inventory store facade', () => {
+  test('persists Custom PC motherboard resources and isolates different boards per canvas', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.createInventoryItems({ type: 'pcBuild', name: 'Synthetic custom PC' })
+      for (const slots of [2, 4]) store.createInventoryItems({
+        type: 'motherboard', name: `Synthetic board ${slots}`, specs: { formFactor: 'ATX' },
+        compatibility: { host: {
+          cpu: { socketCount: 1, sockets: ['AM5'], generations: ['Zen 4'] },
+          memory: { slots, generations: ['DDR5'] },
+          storageSlots: [{ id: 1, key: 'm2', label: 'M.2', count: 1, interfaces: ['NVMe'], formFactors: ['2280'] }],
+          expansionSlots: [{ id: 1, key: 'pcie', label: 'PCIe', count: 1, interfaceFamily: 'pcie', mechanicalLanes: 16 }],
+        } },
+      })
+      for (const [type, specs] of [
+        ['cpu', { socket: 'AM5', generation: 'Zen 4' }],
+        ['cpuCooler', { socket: 'AM5' }],
+        ['ram', { capacityGb: 16, generation: 'DDR5' }],
+        ['storage', { interface: 'NVMe', formFactor: '2280' }],
+        ['gpu', {}], ['case', { supportedMotherboardFormFactors: ['ATX'] }], ['powerSupply', {}],
+      ] as const) store.createInventoryItems({ type, name: `Synthetic ${type}`, specs })
+      store.setProject({ ...store.getProject(), compatibilityPolicy: { disabledHosts: [{ hostType: 'pcBuild', hostId: 1 }], ignoredWarningIds: [] } })
+
+      const assign = async (type: string, id = 1) => {
+        const project = store.getProject()
+        const candidate = { id: project.nextAssignmentId!, serverId: 'pcBuild:1', itemId: `${type}:${id}`, type, assignedAt: '2026-10-16T00:00:00.000Z' }
+        const plan = planHostAllocations({ ...project, assignments: [...project.assignments, candidate] }, 'pcBuild:1')
+        const allocation = plan.assignments.find((entry) => entry.id === candidate.id)!.allocation!
+        expect(allocation, JSON.stringify({ type, results: plan.results, board: project.items['motherboard:1'] })).toBeDefined()
+        const revision = store.getEngineRevision()
+        await store.applyEnginePatch({ baseRevision: revision, patchSet: {
+          revision: revision + 1, forward: { kind: 'patch-assignments', payload: {
+            upsert: [{ id: candidate.id, host: { item_type: 'pcBuild', id: 1 }, item: { item_type: type, id }, component_type: type,
+              assigned_at: candidate.assignedAt, allocation: { resource_type: allocation.resourceType, group_id: allocation.groupId ?? null, positions: allocation.positions } }],
+            remove_assignment_ids: [],
+          } },
+        }, responseBytes: new Uint8Array([1]) })
+      }
+      for (const type of ['motherboard', 'cpu', 'cpuCooler', 'ram', 'storage', 'gpu', 'case', 'powerSupply']) await assign(type)
+      const before = store.getProject()
+      expect(before.assignments).toHaveLength(8)
+      expect(before.assignments.every((assignment) => assignment.allocation?.positions[0] === 0)).toBe(true)
+      const board = before.assignments.find((entry) => entry.type === 'motherboard')!
+      await expect(store.applyEnginePatch({ baseRevision: before.revision!, patchSet: {
+        revision: before.revision! + 1, forward: { kind: 'patch-assignments', payload: { upsert: [], remove_assignment_ids: [board.id] } },
+      }, responseBytes: new Uint8Array([1]) })).rejects.toThrow()
+      expect(store.getProject().assignments).toEqual(before.assignments)
+
+      const ram = store.getEngineSnapshot().topology.assignments.find((entry) => entry.component_type === 'ram')!
+      let revision = store.getEngineRevision()
+      await store.applyEnginePatch({ baseRevision: revision, patchSet: {
+        revision: ++revision, forward: { kind: 'patch-assignments', payload: { upsert: [], remove_assignment_ids: [ram.id] } },
+      }, responseBytes: new Uint8Array([2]) })
+      await store.applyEnginePatch({ baseRevision: revision, patchSet: {
+        revision: ++revision, forward: { kind: 'patch-assignments', payload: { upsert: [ram], remove_assignment_ids: [] } },
+      }, responseBytes: new Uint8Array([3]) })
+      expect(store.getProject().assignments).toEqual(before.assignments)
+
+      const secondary = store.createWorkspace(1, { type: 'canvas', name: 'Other board', iconKey: 'network', colorKey: 'green' }).workspaces.find((entry) => entry.name === 'Other board')!
+      const empty = store.getWorkspace(1, secondary.id)
+      const copied = before.assignments.map((assignment, index) => ({
+        ...assignment, id: empty.nextAssignmentId! + index,
+        itemId: assignment.type === 'motherboard' ? 'motherboard:2' : assignment.itemId,
+      }))
+      store.setWorkspace(1, secondary.id, { ...empty, assignments: copied.reverse() })
+      expect(store.getWorkspace(1, secondary.id).assignments).toHaveLength(8)
+      expect(store.getWorkspace(1, 2).assignments).toEqual(before.assignments)
+      const secondBoard = store.getWorkspace(1, secondary.id).assignments.find((entry) => entry.type === 'motherboard')!
+      const cpu = before.assignments.find((entry) => entry.type === 'cpu')!
+      expect(() => store.core.database.query('UPDATE component_assignments SET resource_provider_assignment_id = ? WHERE id = ?')
+        .run(secondBoard.id, cpu.id)).toThrow(/resource owner/iu)
+      expect(() => store.core.database.query('UPDATE component_assignments SET resource_provider_assignment_id = NULL WHERE id = ?')
+        .run(cpu.id)).toThrow(/resource owner/iu)
+
+      const originalSlots = store.core.database.query('SELECT * FROM component_assignment_slots ORDER BY id').all()
+      const motherboard = store.getProject().items['motherboard:1']
+      store.updateInventoryItem({ type: 'motherboard', id: 1 }, { ...motherboard, name: 'Renamed board' })
+      expect(store.core.database.query('SELECT * FROM component_assignment_slots ORDER BY id').all()).toEqual(originalSlots)
+      expect(() => store.updateInventoryItem({ type: 'motherboard', id: 1 }, {
+        ...motherboard, compatibility: { host: { ...motherboard.compatibility!.host, storageSlots: [] } },
+      })).toThrow(/cannot be removed/iu)
+      expect(store.core.database.query('PRAGMA foreign_key_check').all()).toEqual([])
+      store.cache.invalidateTags(['project:1'])
+      expect(store.getWorkspace(1, 2).assignments).toEqual(before.assignments)
+      const bothCanvases = await store.snapshotStores()
+      await store.replaceStoresAtomically(bothCanvases)
+      expect(store.getWorkspace(1, 2).assignments).toEqual(before.assignments)
+      expect(store.getWorkspace(1, secondary.id).assignments).toHaveLength(8)
+      store.setWorkspace(1, secondary.id, { ...store.getWorkspace(1, secondary.id), assignments: [] })
+      expect(store.getWorkspace(1, 2).assignments).toEqual(before.assignments)
+      const snapshot = await store.snapshotStores()
+      await store.replaceStoresAtomically(snapshot)
+      expect(store.getWorkspace(1, 2).assignments).toEqual(before.assignments)
+      expect(store.getPersistenceHealth()).toMatchObject({ ok: true })
+    } finally { store.close() }
+  })
+
   test('persists the Registry update reconciliation marker across store instances', async () => {
     const store = await emptyFixtureStore()
     try {
@@ -564,7 +660,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 36 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: CORE_MIGRATIONS.length })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()

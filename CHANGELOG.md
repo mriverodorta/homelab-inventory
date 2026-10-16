@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Fixed Custom PC motherboard assignment failing with "Assignment references a missing resource group." Motherboard-provided slots now resolve through the board assigned on the same canvas; case and PSU positions are persisted as well.
+- Preserve resource identities and dependent assignments during motherboard edits, canvas copying, backup/restore and undo. Reject cross-canvas providers and removing a motherboard while its allocated components remain.
+- Added ordered SQLite migration 0037 to create missing logical resources without replacing existing topology. Migration execution now trims trailing whitespace so Bun cannot mask the final constraint assertion.
+
 ## [0.16.18] - 2026-10-14
 
 ### Security

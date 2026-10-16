@@ -144,7 +144,9 @@ export async function applyCommittedMigrations(
 
     const migrate = database.transaction(() => {
       const startedAtMs = Date.now()
-      database.exec(migration.sql)
+      // Bun may mask a final statement's constraint error with trailing whitespace.
+      // Hash the original bytes, but execute without the empty trailing statement.
+      database.exec(migration.sql.trim())
       migration.verify?.(database)
       const violations = foreignKeyViolations(database)
       if (violations.length > 0) {

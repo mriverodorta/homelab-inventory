@@ -42,6 +42,26 @@ Migration is ordered and idempotent. A restart after successful activation opens
 
 ## Verification
 
+### Custom PC Resource Providers (0037)
+
+Custom PCs have one motherboard, case and PSU position. CPU, cooler, memory,
+storage and expansion allocations use the canonical resources on the motherboard
+assigned to that PC in the same project and canvas. The numeric
+`resource_provider_assignment_id` relationship is workspace-scoped; it is not a
+name, UI key, or duplicated copy of the motherboard topology.
+
+Migration `0037_pc_build_resource_providers.sql` retains existing assignment IDs,
+slot IDs, placement data, connections and route cache. It adds missing logical PC
+positions and motherboard cooling positions. Foreign keys and ownership triggers
+reject unrelated boards and cross-canvas providers. The deferred provider foreign
+key permits atomic whole-configuration restore/removal but rejects an orphaned
+dependent component at commit. Existing pre-upgrade backup handling remains in
+effect; conflicting resource identities abort the migration transaction.
+
+Inventory edits preserve occupied source slots or reject the edit. Restart and
+migration replay do not allocate another set of resources. No Registry refresh,
+user data upload, or manual inventory recreation is required.
+
 Wait for the container to become healthy, then inspect the persistence section:
 
 ```bash

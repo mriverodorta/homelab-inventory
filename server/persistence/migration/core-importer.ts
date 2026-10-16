@@ -527,7 +527,7 @@ function insertSubtype(database: Database, type: InventoryType, itemId: number, 
 }
 
 function importCompatibility(database: Database, itemId: number, item: LegacyRecord, now: number, plan: CanonicalIdentityPlan, type: InventoryType) {
-  const host = item.compatibility?.host
+  const host = item.compatibility?.host ?? (type === 'pcBuild' ? {} : undefined)
   if (!host || typeof host !== 'object') return
   const profile = database.query(`INSERT INTO host_compatibility_profiles (host_item_id, topology_completeness, max_expansion_power_mw, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?) RETURNING id`)
     .get(itemId, optionalText(host.topologyCompleteness), canonicalMeasurement(host.maxExpansionPowerMw, host.maxExpansionPowerWatts, (value) => toMilliwatts({ value, unit: 'W' }), 'compatibility.host.maxExpansionPowerMw'), now, now) as { id: number }
@@ -565,7 +565,7 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
     for (const formFactor of records(host.memory.formFactors)) database.query('INSERT INTO host_memory_form_factor_support (memory_profile_id, form_factor) VALUES (?, ?)').run(memory.id, String(formFactor))
     for (const moduleType of records(host.memory.moduleTypes)) { const id = vocabularyId(database, 'memory_module_types', moduleType); if (id) database.query('INSERT INTO host_memory_module_type_support (memory_profile_id, module_type_id) VALUES (?, ?)').run(memory.id, id) }
   }
-  const definitions = legacyResourceDefinitions(item)
+  const definitions = legacyResourceDefinitions(item, type)
   const typedCollections = new Map<string, { entry: LegacyRecord; resourceType: string }>()
   for (const [prefix, collection, resourceType] of [
     ['storage', host.storageSlots, 'storage'],
@@ -598,7 +598,9 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
     const typed = typedCollections.get(definition.key)
     const entry = typed?.entry ?? {}
     database.query('INSERT INTO resource_identity_aliases (resource_id, legacy_item_type_key, legacy_item_id, legacy_resource_key, legacy_resource_group_id, created_at_ms) VALUES (?, ?, ?, ?, ?, ?)').run(resourceIdentityId, type, item.id, definition.key, positiveIntegerOrNull(entry.id), now)
-    const resourceType = definition.key === 'cpu' ? 'cpu' : definition.key === 'memory' ? 'memory' : definition.key === 'power-adapter' ? 'powerAdapter' : definition.key === 'psu' ? 'psuBay' : typed?.resourceType ?? 'optionalModule'
+    const resourceType = type === 'pcBuild' && ['motherboard', 'case', 'power'].includes(definition.key) ? definition.key
+      : definition.key === 'cpu-cooling' && type === 'motherboard' ? 'cooling'
+      : definition.key === 'cpu' ? 'cpu' : definition.key === 'memory' ? 'memory' : definition.key === 'power-adapter' ? 'powerAdapter' : definition.key === 'psu' ? 'psuBay' : typed?.resourceType ?? 'optionalModule'
     database.query('INSERT INTO host_resource_groups (id, resource_identity_id, host_item_id, resource_type, semantic_key, label, slot_count, required_cpu_sockets, location, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(resourceIdentityId, resourceIdentityId, itemId, resourceType, definition.key, optionalText(entry.label) ?? definition.key, definition.count, positiveIntegerOrNull(entry.requiredCpuSockets), optionalText(entry.location), now)
     if (resourceType === 'storage') {
       database.query('INSERT INTO storage_resource_groups (id, pcie_generation, hot_swap, backplane, direct_connect) VALUES (?, ?, ?, ?, ?)').run(resourceIdentityId, positiveIntegerOrNull(entry.pcieGeneration), booleanOrNull(entry.hotSwap), optionalText(entry.backplane), booleanOrNull(entry.directConnect))
@@ -724,7 +726,7 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
       database.query('INSERT INTO cooling_resource_groups (id, fan_count, redundant) VALUES (?, ?, ?)').run(resourceIdentityId, integerOrNull(entry.fanCount), booleanOrNull(entry.redundant))
       for (const condition of records(entry.conditions)) database.query('INSERT INTO cooling_conditions (resource_group_id, condition) VALUES (?, ?)').run(resourceIdentityId, String(condition))
     }
-    if (resourceType === 'power') database.query('INSERT INTO host_power_connector_groups (id, kind, connector, count, required) VALUES (?, ?, ?, ?, ?)').run(resourceIdentityId, entry.kind, entry.connector, positiveIntegerOrNull(entry.count) ?? 1, Number(entry.required === true))
+    if (resourceType === 'power' && typed) database.query('INSERT INTO host_power_connector_groups (id, kind, connector, count, required) VALUES (?, ?, ?, ?, ?)').run(resourceIdentityId, entry.kind, entry.connector, positiveIntegerOrNull(entry.count) ?? 1, Number(entry.required === true))
     const slotTable: Record<string, string> = { cpu: 'cpu_socket_slots', memory: 'memory_slots', storage: 'storage_slots', expansion: 'expansion_slots', optionalModule: 'optional_module_slots', controllerSlot: 'controller_slots', bootDeviceSlot: 'boot_device_slots', psuBay: 'psu_bays', powerAdapter: 'power_adapter_slots' }
     for (let position = 1; position <= definition.count; position += 1) {
       const slotKey = `${groupKey}:slot:${position}`
@@ -1015,7 +1017,7 @@ function replacementIdentityPlan(
       )
     }
   }
-  for (const definition of legacyResourceDefinitions(item)) {
+  for (const definition of legacyResourceDefinitions(item, type)) {
     const key = `${itemPrefix}:resource:${definition.key}`
     const remap = remapByTargetKey.get(definition.key)
     const existingKey = remap?.fromKey ?? definition.key
@@ -1229,7 +1231,7 @@ function runtimeIdentityPlan(database: Database, type: InventoryType, item: Lega
       endpointFaces.set(`${portKey}:face:${endpoint.id ?? index + 1}`, faceId++)
     }
   }
-  for (const definition of legacyResourceDefinitions(item)) {
+  for (const definition of legacyResourceDefinitions(item, type)) {
     const groupKey = `${itemKey}:resource:${definition.key}`
     resourceGroups.set(groupKey, resourceId++)
     for (let position = 1; position <= definition.count; position += 1) {
@@ -1343,7 +1345,7 @@ export function replaceLegacyInventoryItem({
     JOIN host_resource_slots s ON s.id = c.resource_slot_id
     JOIN resource_identity_aliases r ON r.resource_id = s.resource_group_id
     JOIN host_resource_groups g ON g.resource_identity_id = s.resource_group_id
-    WHERE c.host_item_id = ?
+    WHERE s.host_item_id = ?
       AND NOT EXISTS (
         SELECT 1 FROM component_assignment_slots a
         WHERE a.assignment_id = c.id AND a.resource_slot_id = c.resource_slot_id
@@ -1406,7 +1408,7 @@ export function replaceLegacyInventoryItem({
 
   database.query('DELETE FROM connection_endpoints WHERE port_id IN (SELECT id FROM inventory_ports WHERE item_id = ?)').run(itemId)
   database.query('DELETE FROM internal_port_links WHERE item_id = ?').run(itemId)
-  database.query('UPDATE component_assignments SET resource_slot_id = NULL WHERE host_item_id = ?').run(itemId)
+  database.query('UPDATE component_assignments SET resource_slot_id = NULL WHERE resource_slot_id IN (SELECT id FROM host_resource_slots WHERE host_item_id = ?)').run(itemId)
   database.query('DELETE FROM component_assignment_slots WHERE host_item_id = ?').run(itemId)
   database.query('DELETE FROM power_strip_smart_configurations WHERE power_strip_id = ?').run(itemId)
   database.query('DELETE FROM port_identity_aliases WHERE port_id IN (SELECT id FROM inventory_ports WHERE item_id = ?)').run(itemId)
@@ -1523,13 +1525,26 @@ function findLegacyItem(snapshot: LegacySnapshot, type: LegacyInventoryType, id:
   return records(snapshot.inventory?.[LEGACY_IMPORT_TABLE_BY_TYPE[type]]).find((item) => item.id === id)
 }
 
+function assignmentResourceSource(snapshot: LegacySnapshot, assignment: LegacyRecord) {
+  const resourceType = assignment.allocation?.resourceType
+  if (assignment.hostType !== 'pcBuild' || !resourceType || ['motherboard', 'case', 'power'].includes(resourceType)) {
+    return { type: assignment.hostType, id: assignment.hostId, providerId: null }
+  }
+  const boards = records(snapshot.project?.assignments).filter((candidate) => candidate.hostType === 'pcBuild'
+    && candidate.hostId === assignment.hostId && candidate.itemType === 'motherboard')
+  if (boards.length !== 1) throw new Error('PC component allocations require exactly one assigned motherboard.')
+  return { type: 'motherboard', id: boards[0].itemId, providerId: boards[0].id }
+}
+
 function assignmentSlot(snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, assignment: LegacyRecord) {
   const position = records(assignment.allocation?.positions)[0]
   if (!Number.isSafeInteger(position)) return null
   const resourceType = assignment.allocation?.resourceType ?? assignment.type
+  const source = assignmentResourceSource(snapshot, assignment)
   let resourceKey = assignment.allocation?.resourceKey ?? resourceType
+  if (resourceType === 'cooling' && source.type === 'motherboard') resourceKey = 'cpu-cooling'
   if (assignment.allocation?.groupId != null) {
-    const host = findLegacyItem(snapshot, assignment.hostType, assignment.hostId)
+    const host = findLegacyItem(snapshot, source.type, source.id)
     const collectionKey: Record<string, string> = {
       storage: 'storageSlots',
       expansion: 'expansionSlots',
@@ -1542,7 +1557,9 @@ function assignmentSlot(snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, a
     if (!group) throw new Error(`Assignment ${assignment.id} references missing ${resourceType} group ${assignment.allocation.groupId}.`)
     resourceKey = group.key ?? `${resourceType}-${collection.indexOf(group) + 1}`
   }
-  return plan.resourceSlots.get(`${assignment.hostType}:${assignment.hostId}:resource:${resourceKey}:slot:${Number(position) + 1}`) ?? null
+  const slotId = plan.resourceSlots.get(`${source.type}:${source.id}:resource:${resourceKey}:slot:${Number(position) + 1}`) ?? null
+  if (assignment.hostType === 'pcBuild' && slotId === null) throw new Error('PC component allocation references a missing motherboard resource slot.')
+  return slotId
 }
 
 function importProject(database: Database, snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, now: number) {
@@ -1550,18 +1567,25 @@ function importProject(database: Database, snapshot: LegacySnapshot, plan: Canon
   const workspaceOwnedTopology = (database.query("PRAGMA table_info('component_assignments')").all() as Array<{
     name: string
   }>).some((column) => column.name === 'workspace_id')
+  const providerTopology = (database.query("PRAGMA table_info('component_assignments')").all() as Array<{ name: string }>)
+    .some((column) => column.name === 'resource_provider_assignment_id')
   database.query('UPDATE projects SET name = ?, revision = ?, updated_at_ms = ? WHERE id = 1').run(optionalText(project.metadata?.name) ?? 'Default Project', positiveIntegerOrNull(project.revision) ?? 1, timestamp(project.metadata?.updatedAt, now))
   const viewport = project.viewport ?? project.metadata?.viewport ?? {}
   database.query('UPDATE canvas_workspaces SET viewport_x = ?, viewport_y = ?, viewport_zoom_basis_points = ?, settings_json = ? WHERE id = 2').run(Math.round(viewport.x ?? 0), Math.round(viewport.y ?? 0), Math.max(1, Math.round((viewport.zoom ?? 1) * 10000)), json(project.canvasSettings ?? {}))
   for (const placement of records(project.placements)) {
     database.query('INSERT INTO workspace_placements (project_id, workspace_id, item_id, x, y, orientation, z_index, created_at_ms, updated_at_ms) VALUES (1, 2, ?, ?, ?, ?, ?, ?, ?)').run(canonicalItemId(plan, placement.itemType, placement.itemId), placement.x, placement.y, optionalText(placement.orientation), integerOrNull(placement.zIndex) ?? 0, now, now)
   }
-  for (const assignment of records(project.assignments)) {
+  for (const assignment of [...records(project.assignments)].sort((a, b) => Number(b.itemType === 'motherboard') - Number(a.itemType === 'motherboard') || a.id - b.id)) {
     const id = plan.assignments.get(String(assignment.id))
     const hostItemId = canonicalItemId(plan, assignment.hostType, assignment.hostId)
     const componentItemId = canonicalItemId(plan, assignment.itemType, assignment.itemId)
     const primarySlotId = assignmentSlot(snapshot, plan, assignment)
-    database.query(workspaceOwnedTopology
+    const source = assignmentResourceSource(snapshot, assignment)
+    if (providerTopology) database.query(`
+      INSERT INTO component_assignments (id, project_id, workspace_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms, resource_provider_assignment_id)
+      VALUES (?, 1, 2, ?, ?, ?, ?, ?)
+    `).run(id, hostItemId, componentItemId, primarySlotId, timestamp(assignment.assignedAt, now), source.providerId == null ? null : plan.assignments.get(String(source.providerId)))
+    else database.query(workspaceOwnedTopology
       ? 'INSERT INTO component_assignments (id, project_id, workspace_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms) VALUES (?, 1, 2, ?, ?, ?, ?)'
       : 'INSERT INTO component_assignments (id, project_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms) VALUES (?, 1, ?, ?, ?, ?)'
     ).run(id, hostItemId, componentItemId, primarySlotId, timestamp(assignment.assignedAt, now))
@@ -1575,7 +1599,7 @@ function importProject(database: Database, snapshot: LegacySnapshot, plan: Canon
       database.query(workspaceOwnedTopology
         ? 'INSERT INTO component_assignment_slots (project_id, workspace_id, assignment_id, host_item_id, resource_slot_id, position) VALUES (1, 2, ?, ?, ?, ?)'
         : 'INSERT INTO component_assignment_slots (project_id, assignment_id, host_item_id, resource_slot_id, position) VALUES (1, ?, ?, ?, ?)'
-      ).run(id, hostItemId, slotId, position)
+      ).run(id, canonicalItemId(plan, source.type, source.id), slotId, position)
     }
   }
   for (const connection of records(project.connections)) {

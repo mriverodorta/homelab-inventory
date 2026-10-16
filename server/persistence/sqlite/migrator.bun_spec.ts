@@ -33,6 +33,17 @@ async function createHandle() {
 }
 
 describe('committed SQLite migrations', () => {
+  test('does not mask a final SQL constraint failure with trailing whitespace', async () => {
+    const handle = await createHandle()
+    try {
+      await expect(applyCommittedMigrations(handle, [migration('0001_guard',
+        'CREATE TABLE guard(value INTEGER CHECK(value = 1)); INSERT INTO guard VALUES(0);\n\n',
+      )])).rejects.toThrow(/constraint/iu)
+      expect(handle.database.query("SELECT name FROM sqlite_schema WHERE name = 'guard'").get()).toBeNull()
+      expect(handle.database.query('PRAGMA user_version').get()).toEqual({ user_version: 0 })
+    } finally { closeManagedDatabase(handle) }
+  })
+
   test('applies migrations in order and remains idempotent after restart', async () => {
     const handle = await createHandle()
     const migrations = [

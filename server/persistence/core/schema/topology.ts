@@ -20,7 +20,8 @@ export const componentAssignments = sqliteTable('component_assignments', {
   workspaceId: integer('workspace_id').notNull(),
   hostItemId: integer('host_item_id').notNull().references(() => inventoryItems.id, { onDelete: 'restrict' }),
   componentItemId: integer('component_item_id').notNull().references(() => inventoryItems.id, { onDelete: 'restrict' }),
-  resourceSlotId: integer('resource_slot_id'),
+  resourceSlotId: integer('resource_slot_id').references(() => hostResourceSlots.id, { onDelete: 'restrict' }),
+  resourceProviderAssignmentId: integer('resource_provider_assignment_id'),
   assignedAtMs: integer('assigned_at_ms').notNull(),
 }, (table) => [
   uniqueIndex('component_assignments_project_component_unique').on(table.projectId, table.workspaceId, table.componentItemId),
@@ -30,16 +31,19 @@ export const componentAssignments = sqliteTable('component_assignments', {
     .on(table.projectId, table.workspaceId, table.resourceSlotId)
     .where(sql`${table.resourceSlotId} IS NOT NULL`),
   index('component_assignments_host_index').on(table.projectId, table.workspaceId, table.hostItemId),
+  index('component_assignments_provider_index').on(table.resourceProviderAssignmentId),
   foreignKey({
     name: 'component_assignments_workspace_fk',
     columns: [table.projectId, table.workspaceId],
     foreignColumns: [workspaces.projectId, workspaces.id],
   }).onDelete('cascade'),
   foreignKey({
-    name: 'component_assignments_host_slot_fk',
-    columns: [table.hostItemId, table.resourceSlotId],
-    foreignColumns: [hostResourceSlots.hostItemId, hostResourceSlots.id],
-  }).onDelete('restrict'),
+    name: 'component_assignments_provider_fk',
+    columns: [table.projectId, table.workspaceId, table.resourceProviderAssignmentId],
+    foreignColumns: [table.projectId, table.workspaceId, table.id],
+  }),
+  // The committed SQL migration makes this self-reference deferred for atomic bulk removal/restore.
+  check('component_assignments_distinct_provider_check', sql`${table.resourceProviderAssignmentId} IS NULL OR ${table.resourceProviderAssignmentId} <> ${table.id}`),
   check('component_assignments_distinct_items_check', sql`${table.hostItemId} <> ${table.componentItemId}`),
 ])
 

@@ -8,6 +8,7 @@ import { CORE_MIGRATIONS } from '../migrations/manifest.ts'
 import { auditPublicationMigration } from '../../../../scripts/sharing/publication-preflight.mjs'
 
 const temporaryDirectories: string[] = []
+const RECONCILIATION_VERSION = CORE_MIGRATIONS.findIndex((migration) => migration.id === '0036_labgd_publication_reconciliation') + 1
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
@@ -15,7 +16,7 @@ afterEach(async () => {
 
 async function committedMigrations() {
   const directory = resolve(import.meta.dir, '../migrations/generated')
-  return Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
+  return Promise.all(CORE_MIGRATIONS.slice(0, RECONCILIATION_VERSION).map(async (migration) => ({
     id: migration.id,
     sha256: migration.sha256,
     sql: await readFile(join(directory, migration.file), 'utf8'),
@@ -70,7 +71,7 @@ function insertLegacyOperation(database, input) {
 
 describe('LabGD publication reconciliation migration', () => {
   test('classifies legacy intent without fabricating ambiguous revisions or changing evidence', async () => {
-    const { handle, migrations } = await databaseAt(CORE_MIGRATIONS.length - 2)
+    const { handle, migrations } = await databaseAt(RECONCILIATION_VERSION - 2)
     try {
       insertShareFixture(handle.database)
       insertLegacyOperation(handle.database, { id: 1, key: 'completed', kind: 'publish', state: 'succeeded', remoteOperationId: 120, attemptCount: 1 })
@@ -152,7 +153,7 @@ describe('LabGD publication reconciliation migration', () => {
   })
 
   test('is a deterministic data no-op when no unfinished publication exists', async () => {
-    const { handle, migrations } = await databaseAt(CORE_MIGRATIONS.length - 1)
+    const { handle, migrations } = await databaseAt(RECONCILIATION_VERSION - 1)
     try {
       const before = handle.database.query('SELECT count(*) AS count FROM share_publication_operations').get()
       await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 1, currentVersion: 36 })
