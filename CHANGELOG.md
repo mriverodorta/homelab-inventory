@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.20] - 2026-10-26
+
 ### Security
 
 - Harden API authentication, authorization and browser-origin boundaries, with case-sensitive application routing and fail-closed handling of noncanonical API paths.

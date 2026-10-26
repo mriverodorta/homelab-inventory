@@ -833,7 +833,7 @@ const RELEASE_0_16_19_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_20_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Hardened API authentication, authorization and browser-origin checks so noncanonical request paths cannot bypass security controls.',
@@ -842,6 +842,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [
     'Updated React, React Query, Drizzle ORM, tar-stream and test tooling; scheduled security scans now inspect exact platform manifests directly from the registry.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1371,9 +1377,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.20',
+    date: '2026-10-26',
+    channel: 'latest',
+    title: 'API security hardening and runtime dependency updates',
+    ...RELEASE_0_16_20_DETAILS,
+  },
+  {
     version: '0.16.19',
     date: '2026-10-16',
-    channel: 'latest',
+    channel: 'release',
     title: 'Custom PC motherboard assignment repair',
     ...RELEASE_0_16_19_DETAILS,
   },
