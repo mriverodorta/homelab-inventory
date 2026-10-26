@@ -170,6 +170,7 @@ const updateChecker = new DockerHubUpdateChecker({
 })
 
 const app = express()
+app.set('case sensitive routing', true)
 let resolveHttpReady
 const httpReady = new Promise((resolve) => { resolveHttpReady = resolve })
 const applicationEventBus = new ApplicationLiveEventBus()

@@ -2,6 +2,7 @@ import {
   EXTERNAL_IDENTITY_PATHS,
   ISOLATED_RUNTIME_ENVIRONMENT,
 } from '../../server/external-access-policy.mjs'
+import { verifyApiSecurity } from './api-security-smoke.mjs'
 
 export const SMOKE_DATA_TMPFS = '/data:rw,noexec,nosuid,nodev,uid=10001,gid=10001,mode=0700'
 export const SMOKE_ENVIRONMENT = ISOLATED_RUNTIME_ENVIRONMENT
@@ -60,6 +61,10 @@ export function smokeHealthCommand(containerName, expectedMode = 'staging') {
     'docker', 'exec', containerName, 'bun', '-e',
     `const r=await fetch('http://127.0.0.1:8798/api/health');const p=await r.json();if(!r.ok||p.ok!==true||p.mode!==${JSON.stringify(expectedMode)})process.exit(1)`,
   ]
+}
+
+export function smokeApiSecurityCommand(containerName) {
+  return ['docker', 'exec', containerName, 'bun', '-e', `await (${verifyApiSecurity.toString()})()`]
 }
 
 export function smokeIdentityAuditCommand(containerName) {

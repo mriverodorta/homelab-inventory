@@ -8,9 +8,18 @@ import {
   smokeHealthCommand,
   smokeIdentityAuditCommand,
   smokeRunCommand,
+  smokeApiSecurityCommand,
 } from './smoke-runtime.mjs'
 
 describe('container smoke runtime', () => {
+  test('security regression checks run inside the isolated application container', () => {
+    const command = smokeApiSecurityCommand('smoke-test')
+    expect(command.slice(0, 3)).toEqual(['docker', 'exec', 'smoke-test'])
+    expect(command.at(-1)).toMatch(/assert\.equal\(health\.mode, ['"]staging['"]\)/)
+    expect(command.at(-1)).toContain('/api/auth/status')
+    expect(command.at(-1)).toContain('Cross-origin browser mutations are not allowed.')
+    expect(command.at(-1)).not.toContain('lab.gd')
+  })
   test('uses a non-root task-scoped data filesystem instead of an anonymous volume', () => {
     const command = smokeRunCommand({
       containerName: 'smoke-test',

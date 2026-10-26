@@ -6,6 +6,17 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Security
+
+- Harden API authentication, authorization and browser-origin boundaries, with case-sensitive application routing and fail-closed handling of noncanonical API paths.
+- Pin body-parser 2.4.0 and ip-address 10.7.4 for CVE-2026-111181 and CVE-2026-111997. Advance the qs override to 6.16.1 to satisfy the parser's supported dependency range.
+- Rebuild the unchanged Agent source with digest-pinned Go 1.26.10 for CVE-2026-111943.
+
+### Maintenance
+
+- Integrate dependency updates from PRs #72-#77: React and React DOM 19.3.1, React Query 5.104.4, user-event 14.6.8, tar-stream 3.2.2, Drizzle ORM 0.45.4 and CodeQL actions 4.39.0.
+- Resolve each scheduled image scan to an immutable Linux architecture manifest and scan it directly from the registry, avoiding incomplete Docker multi-platform exports. Both scanners retain all-severity zero-finding gates; Scout also runs when Trivy reports failures.
+
 ## [0.16.19] - 2026-10-16
 
 ### Fixed

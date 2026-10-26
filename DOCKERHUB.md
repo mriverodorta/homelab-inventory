@@ -19,6 +19,8 @@ https://github.com/mriverodorta/homelab-inventory
 
 GitHub is the source of truth for source history and pull-request review. Docker Hub images are built on the maintainer's Apple Silicon staging system, tested against sanitized production-shaped data, scanned for both supported architectures, and uploaded from the exact validated OCI artifacts without rebuilding. Local runtime tests prove the loaded image config and rootfs against each attested OCI archive without a temporary Registry. Unchanged Rust/WASM and Agent inputs reuse checksum-verified local artifacts rather than recompiling Rust or Go per architecture. GitHub retains scheduled CodeQL and published-image monitoring, while deployment pushes do not start duplicate hosted validation. Numbered releases are created during stable promotion.
 
+Scheduled image monitoring checks each channel's immutable AMD64 and ARM64 manifest directly from Docker Hub with both Docker Scout and Trivy. A scanner failure or any known vulnerability fails the security gate, including unfixed findings.
+
 ## Features
 
 - **Visual inventory:** Arrange servers, NAS devices, PC builds, switches, patch panels, monitors, UPS systems, and power strips on an infinite canvas.

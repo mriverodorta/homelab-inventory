@@ -32,19 +32,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Pull target platform
-        run: |
-          docker pull \
-            --platform "linux/${{ matrix.platform }}" \
-            "mriverodorta/homelab-inventory:${{ matrix.channel }}"
-          docker tag \
-            "mriverodorta/homelab-inventory:${{ matrix.channel }}" \
-            "homelab-inventory-monitor:${{ matrix.channel }}-${{ matrix.platform }}"
+      - name: Resolve immutable platform manifest
+        id: target
+        run: node scripts/container-security/monitor-target.mjs "${{ matrix.channel }}" "${{ matrix.platform }}"
 
       - name: Enforce runtime vulnerability policy
         uses: ./.github/actions/scan-runtime
         with:
-          image-ref: homelab-inventory-monitor:${{ matrix.channel }}-${{ matrix.platform }}
+          image-ref: ${{ steps.target.outputs.image-ref }}
           platform: linux/${{ matrix.platform }}
           dockerhub-user: mriverodorta
           dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}

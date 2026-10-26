@@ -1,5 +1,6 @@
 import { deriveAuthenticationMode } from './model.mjs'
 import { permissionByKey } from './permission-catalog.mjs'
+import { isApiPath } from '../api-path.mjs'
 
 const PUBLIC_ROUTES = [
   ['GET', /^\/api\/health\/?$/],
@@ -162,7 +163,7 @@ function matches(routes, method, path) {
 export function classifyApiRequest(methodInput, pathInput) {
   const method = String(methodInput ?? '').toUpperCase()
   const path = String(pathInput ?? '').split('?')[0]
-  if (!path.startsWith('/api/')) return { access: 'not-api' }
+  if (!isApiPath(path)) return { access: 'not-api' }
   if (matches(PUBLIC_ROUTES, method, path)) return { access: 'public' }
   if (matches(MACHINE_ROUTES, method, path)) return { access: 'machine' }
   const protectedRoute = matches(PROTECTED_ROUTES, method, path)

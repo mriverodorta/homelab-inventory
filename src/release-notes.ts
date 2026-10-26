@@ -835,8 +835,13 @@ const RELEASE_0_16_19_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
-  notes: [],
+  fixes: [
+    'Hardened API authentication, authorization and browser-origin checks so noncanonical request paths cannot bypass security controls.',
+    'Updated request parsing and IP validation dependencies and rebuilt the bundled Agent with Go 1.26.10 to address newly reported vulnerabilities.',
+  ],
+  notes: [
+    'Updated React, React Query, Drizzle ORM, tar-stream and test tooling; scheduled security scans now inspect exact platform manifests directly from the registry.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

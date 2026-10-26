@@ -57,3 +57,19 @@ image: mriverodorta/homelab-inventory:stable
 ```
 
 Use `latest` only when you intentionally want the newest development image from `main`.
+
+## Security Maintenance Readiness
+
+Scheduled monitoring resolves each channel to a single immutable Linux amd64 or
+arm64 manifest. Trivy uses its remote image source and Scout uses `registry://`
+against that same digest. Neither scanner depends on exporting a partial local
+multi-platform Docker image. Missing or ambiguous architecture manifests fail
+closed. Scanner failures and known vulnerabilities still fail the job; there
+are no severity exclusions or unfixed-vulnerability exemptions.
+
+Dependabot runtime dependency PRs still require maintainer-reviewed Unreleased
+release notes before integration. A release-note gate failure is not a failed
+runtime regression test: add the consolidated notes, then run the full local
+test/build/security gates. Do not blindly add skip markers to runtime or
+security updates. GitHub PR integration and security advisory publication wait
+for the coordinated release; local readiness work does not bump the version.

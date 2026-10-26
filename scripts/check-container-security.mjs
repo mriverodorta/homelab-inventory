@@ -9,6 +9,7 @@ import {
   smokeHealthCommand,
   smokeIdentityAuditCommand,
   smokeRunCommand,
+  smokeApiSecurityCommand,
 } from './container-security/smoke-runtime.mjs'
 import { releasePaths } from './local-release/config.mjs'
 import { ensureAgentArtifact, materializeAgentArtifact } from './release-artifacts/agent-store.mjs'
@@ -75,6 +76,7 @@ async function smokeTest(image, platform, { appMode = 'staging', demoSourceDir =
       'bun', 'scripts/verify-sqlite-runtime.mjs',
     ])
     await run(smokeIdentityAuditCommand(containerName))
+    if (appMode === 'staging') await run(smokeApiSecurityCommand(containerName))
   } finally {
     const cleanup = Bun.spawn(['docker', 'rm', '--force', containerName], {
       cwd: ROOT,
@@ -159,6 +161,7 @@ async function main() {
       await run([
         'docker', 'buildx', 'build',
         '--pull',
+        '--no-cache',
         '--load',
         '--platform', platform,
         '--tag', image,

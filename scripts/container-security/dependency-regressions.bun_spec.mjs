@@ -11,6 +11,47 @@ const minimatchRequire = createRequire(casbinRequire.resolve('minimatch'))
 const { Address4, Address6, AddressError } = limiterRequire('ip-address')
 const { ipKeyGenerator } = require('express-rate-limit')
 
+describe('compressed request parsing (CVE-2026-111181)', () => {
+  test('Express resolves the patched parser and supported query parser', () => {
+    expect(expressRequire('body-parser/package.json').version).toBe('2.4.0')
+    const parserRequire = createRequire(expressRequire.resolve('body-parser'))
+    expect(Bun.semver.satisfies(parserRequire('qs/package.json').version, '>=6.16.1 <7')).toBe(true)
+  })
+
+  test.each(['node', process.execPath])('late compressed bytes do not crash or stall %s', (runtime) => {
+    const result = spawnSync(runtime, ['-e', `
+      const assert = require('node:assert/strict');
+      const http = require('node:http');
+      const { deflateSync } = require('node:zlib');
+      const express = require(${JSON.stringify(require.resolve('express'))});
+      const app = express();
+      let client;
+      app.use(express.json());
+      app.post('/', (req, res) => {
+        req.on('end', () => res.json(req.body));
+        client.end(Buffer.alloc(1024));
+      });
+      const server = app.listen(0, '127.0.0.1', () => {
+        const frame = Buffer.concat([deflateSync(Buffer.from('{"ok":true}')), Buffer.from([0])]);
+        client = http.request({ host:'127.0.0.1', port:server.address().port, path:'/', method:'POST', agent:false,
+          headers:{'content-type':'application/json','content-encoding':'deflate','content-length':frame.length+1024}
+        }, res => {
+          let body=''; res.on('data', chunk => { body+=chunk });
+          res.on('end', () => {
+            assert.equal(res.statusCode, 200); assert.deepEqual(JSON.parse(body), {ok:true});
+            server.close(() => process.stdout.write('survived'));
+          });
+        });
+        client.on('error', error => { throw error });
+        client.write(frame);
+      });
+    `], { timeout: 3000, maxBuffer: 4096, encoding: 'utf8' })
+    expect(result.error).toBeUndefined()
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stdout).toBe('survived')
+  })
+})
+
 describe('Express proxy trust dependency security (CVE-2026-90711)', () => {
   test.each([
     ['::ffff:10.0.0.0/8'],
@@ -53,6 +94,20 @@ describe('Express proxy trust dependency security (CVE-2026-90711)', () => {
 })
 
 describe('rate limiter IP dependency security', () => {
+  test('zone-identifier rejection stays bounded (CVE-2026-111997)', () => {
+    expect(Bun.semver.satisfies(limiterRequire('ip-address/package.json').version, '>=10.7.4 <11')).toBe(true)
+    const entry = limiterRequire.resolve('ip-address')
+    const result = spawnSync(process.execPath, ['-e', `
+      const { Address6 } = require(${JSON.stringify(entry)});
+      if (Address6.isValid('%'.repeat(150000) + '\\n')) process.exit(1);
+      if (!Address6.isValid('fe80::1%eth0')) process.exit(1);
+      process.stdout.write('bounded');
+    `], { timeout: 2000, maxBuffer: 4096, encoding: 'utf8' })
+    expect(result.error).toBeUndefined()
+    expect(result.status).toBe(0)
+    expect(result.stdout).toBe('bounded')
+  })
+
   test('mapped IPv4 representations share one rate-limit bucket', () => {
     expect(ipKeyGenerator('::ffff:c000:22a')).toBe(ipKeyGenerator('::ffff:192.0.2.42'))
     expect(ipKeyGenerator('::ffff:c000:22a')).toBe('192.0.2.42')

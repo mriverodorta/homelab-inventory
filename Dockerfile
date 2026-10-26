@@ -54,6 +54,7 @@ COPY --chown=10001:10001 package.json bun.lock ./
 COPY --from=prod-deps --chown=10001:10001 /app/node_modules ./node_modules
 COPY --from=build --chown=10001:10001 /app/dist ./dist
 COPY --chown=10001:10001 src/release-notes.ts ./src/
+COPY --chown=10001:10001 server/api-path.mjs ./server/
 COPY --chown=10001:10001 src/types ./src/types
 COPY --chown=10001:10001 shared/compatibility ./shared/compatibility
 COPY --chown=10001:10001 shared/backup/contract.mjs ./shared/backup/
