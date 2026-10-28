@@ -1,4 +1,7 @@
+// @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
+import { generateKeyPairSync, sign } from 'node:crypto'
+import * as oidc from 'openid-client'
 import { assertAuthenticationStoreShape, createAuthenticationStore, createOwnerAccount, ensureProtectedOwnerRole } from './model.mjs'
 import { OidcService } from './oidc-service.mjs'
 
@@ -45,6 +48,71 @@ function harness(claims = { iss: 'https://identity.example/application/o/invento
 }
 
 describe('OIDC authentication service', () => {
+  it.each(['valid', 'wrong-state', 'wrong-nonce'])('validates %s callbacks with the real OIDC client and an in-memory provider', async (scenario) => {
+    const { service, store } = harness()
+    const issuer = 'https://identity.example/application/o/inventory'
+    const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+    let nonce
+    let verifier
+    const transport = vi.fn(async (input, options) => {
+      const url = new URL(String(input))
+      if (url.href === 'https://identity.example/.well-known/openid-configuration/application/o/inventory'
+        || url.href === `${issuer}/.well-known/openid-configuration`) {
+        return Response.json({
+          issuer,
+          authorization_endpoint: `${issuer}/authorize`,
+          token_endpoint: `${issuer}/token`,
+          response_types_supported: ['code'],
+          subject_types_supported: ['public'],
+          id_token_signing_alg_values_supported: ['RS256'],
+          token_endpoint_auth_methods_supported: ['client_secret_post'],
+        })
+      }
+      if (url.href === `${issuer}/token`) {
+        const body = new URLSearchParams(options.body)
+        expect(body.get('code_verifier')).toBe(verifier)
+        expect(body.get('redirect_uri')).toBe('https://inventory.example/api/auth/oidc/callback')
+        expect(body.get('client_id')).toBe('homelab-inventory')
+        const now = Math.floor(Date.now() / 1000)
+        const header = Buffer.from(JSON.stringify({ alg: 'RS256' })).toString('base64url')
+        const payload = Buffer.from(JSON.stringify({
+          iss: issuer, sub: 'owner-subject', aud: 'homelab-inventory',
+          iat: now, exp: now + 300,
+          nonce: scenario === 'wrong-nonce' ? 'invalid-nonce' : nonce,
+          email: 'owner@example.com', email_verified: true,
+        })).toString('base64url')
+        const signature = sign('sha256', Buffer.from(`${header}.${payload}`), privateKey).toString('base64url')
+        return Response.json({ access_token: 'synthetic-token', token_type: 'Bearer', expires_in: 300, id_token: `${header}.${payload}.${signature}` })
+      }
+      throw new Error('Unexpected OIDC test request')
+    })
+    service.client = {
+      ...oidc,
+      discovery: (server, clientId, metadata) => oidc.discovery(server, clientId, metadata, undefined, { [oidc.customFetch]: transport }),
+    }
+
+    const started = await service.start({ bindAccountId: 1 })
+    const authorization = new URL(started.url)
+    const transaction = store.getAuthenticationState().oidcTransactions[0]
+    nonce = authorization.searchParams.get('nonce')
+    verifier = transaction.codeVerifier
+    expect(authorization.searchParams.get('code_challenge_method')).toBe('S256')
+    expect(authorization.searchParams.get('code_challenge')).toBe(await oidc.calculatePKCECodeChallenge(verifier))
+    const callback = new URL('https://inventory.example/api/auth/oidc/callback?code=synthetic-code')
+    callback.searchParams.set('state', scenario === 'wrong-state' ? 'invalid-state' : transaction.state)
+
+    if (scenario === 'valid') {
+      await expect(service.callback(callback.href, started.transactionToken)).resolves.toMatchObject({ accountId: 1, issuer, subject: 'owner-subject' })
+      expect(store.getAuthenticationState().oidcIdentities).toHaveLength(1)
+      await expect(service.callback(callback.href, started.transactionToken)).rejects.toThrow(/invalid or expired/)
+    } else {
+      await expect(service.callback(callback.href, started.transactionToken)).rejects.toThrow()
+      expect(store.getAuthenticationState().oidcTransactions[0].usedAt).toBeNull()
+      expect(store.getAuthenticationState().oidcIdentities).toHaveLength(0)
+    }
+    expect(transport).toHaveBeenCalledTimes(scenario === 'wrong-state' ? 1 : 2)
+  })
+
   it('uses PKCE, stores an opaque transaction hash, and binds exact issuer/subject to the owner', async () => {
     const { service, store, authService } = harness()
     const started = await service.start({ returnTo: '/settings?section=authentication', bindAccountId: 1 })

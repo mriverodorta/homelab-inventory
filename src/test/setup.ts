@@ -12,18 +12,18 @@ if (!globalThis.ResizeObserver) {
   }
 }
 
-if (!HTMLElement.prototype.hasPointerCapture) {
+if (typeof HTMLElement !== 'undefined' && !HTMLElement.prototype.hasPointerCapture) {
   HTMLElement.prototype.hasPointerCapture = () => false
 }
 
-if (!HTMLElement.prototype.releasePointerCapture) {
+if (typeof HTMLElement !== 'undefined' && !HTMLElement.prototype.releasePointerCapture) {
   HTMLElement.prototype.releasePointerCapture = () => {}
 }
 
-if (!HTMLElement.prototype.setPointerCapture) {
+if (typeof HTMLElement !== 'undefined' && !HTMLElement.prototype.setPointerCapture) {
   HTMLElement.prototype.setPointerCapture = () => {}
 }
 
-if (!HTMLElement.prototype.scrollIntoView) {
+if (typeof HTMLElement !== 'undefined' && !HTMLElement.prototype.scrollIntoView) {
   HTMLElement.prototype.scrollIntoView = () => {}
 }

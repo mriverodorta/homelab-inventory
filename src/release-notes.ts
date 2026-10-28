@@ -847,7 +847,9 @@ const RELEASE_0_16_20_DETAILS: UnreleasedReleaseNotes = {
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
-  notes: [],
+  notes: [
+    'Updated the OIDC sign-in client, Systems table dependencies, CSS build tooling and Node.js types, alongside the scheduled CodeQL security scanner.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
