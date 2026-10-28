@@ -844,12 +844,18 @@ const RELEASE_0_16_20_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_21_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
   notes: [
     'Updated the OIDC sign-in client, Systems table dependencies, CSS build tooling and Node.js types, alongside the scheduled CodeQL security scanner.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1379,9 +1385,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.21',
+    date: '2026-10-28',
+    channel: 'latest',
+    title: 'Sign-in, Systems table and maintenance updates',
+    ...RELEASE_0_16_21_DETAILS,
+  },
+  {
     version: '0.16.20',
     date: '2026-10-26',
-    channel: 'latest',
+    channel: 'release',
     title: 'API security hardening and runtime dependency updates',
     ...RELEASE_0_16_20_DETAILS,
   },

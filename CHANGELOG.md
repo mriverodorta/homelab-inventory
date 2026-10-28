@@ -6,10 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.21] - 2026-10-28
+
 ### Maintenance
 
 - Integrate Dependabot PRs #78-#83: Autoprefixer 10.6.1, React Table 9.3.1, openid-client 6.8.8, PostCSS 8.5.31, Node.js types 26.6.5 and CodeQL actions 4.39.1. Retain matching immutable CodeQL action pins and existing runtime security overrides.
-- Include structured unreleased notes for the dependency batch so release-note validation can proceed without bypassing the policy or changing the application version.
+- Add OIDC callback regression coverage for successful sign-in, state and nonce validation, PKCE and replay protection using an isolated in-memory provider.
 
 ## [0.16.20] - 2026-10-26
 
