@@ -93,7 +93,7 @@
     "lowdb": "^7.0.1",
     "lru-cache": "11.5.3",
     "lucide-react": "^1.55.0",
-    "openid-client": "^6.8.4",
+    "openid-client": "^6.8.8",
     "radix-ui": "^1.6.7",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
