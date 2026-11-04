@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.22] - 2026-11-04
+
 ### Fixed
 
 - Open the host inspector directly from a fresh Systems page without visiting Canvas first. Load workspace details only when selected, keep the table visible during loading or failure, and support closing or retrying without losing selection.

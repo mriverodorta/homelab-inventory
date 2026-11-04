@@ -852,7 +852,7 @@ const RELEASE_0_16_21_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_22_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Fixed host inspectors not opening on a fresh Systems page until Canvas was visited. Inspector details now load on demand with close and retry controls while the Systems table remains available.',
@@ -862,6 +862,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Updated interface controls, icons, query handling, validation and development tooling, with matching shared viewer dependencies.',
     'Reduced interface script requests while preserving lazy loading and existing page-size budgets.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1391,9 +1397,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.22',
+    date: '2026-11-04',
+    channel: 'latest',
+    title: 'Systems inspector recovery and dependency security',
+    ...RELEASE_0_16_22_DETAILS,
+  },
+  {
     version: '0.16.21',
     date: '2026-10-28',
-    channel: 'latest',
+    channel: 'release',
     title: 'Sign-in, Systems table and maintenance updates',
     ...RELEASE_0_16_21_DETAILS,
   },
