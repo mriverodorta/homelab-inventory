@@ -854,8 +854,13 @@ const RELEASE_0_16_21_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
-  notes: [],
+  fixes: [
+    'Updated the authorization dependency tree to fix the minimatch resource-exhaustion vulnerability CVE-2026-118764.',
+  ],
+  notes: [
+    'Updated interface controls, icons, query handling, validation and development tooling, with matching shared viewer dependencies.',
+    'Reduced interface script requests while preserving lazy loading and existing page-size budgets.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

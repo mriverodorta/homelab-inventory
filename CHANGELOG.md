@@ -6,6 +6,15 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Security
+
+- Pin minimatch 11.0.1 to address CVE-2026-118764 in the authorization dependency tree. Add regression coverage for bounded globstar-parent expansion and unchanged Casbin authorization decisions.
+
+### Maintenance
+
+- Integrate dependency updates proposed in PRs #85-#93: Autoprefixer 10.6.2, Oxlint 1.90.0, Radix UI 1.8.1, Lucide React 1.66.0, React Query 5.105.1, jest-dom 7.0.1, Node.js types 26.6.6, shadcn 4.23.0 and Zod 4.6.7. Keep shared viewer and share-contract dependency ranges aligned.
+- Group shared interface controls while reserving eager dependencies separately, keeping Systems and Canvas within the existing loading budgets without moving lazy controls into the initial page bundle.
+
 ## [0.16.21] - 2026-10-28
 
 ### Maintenance

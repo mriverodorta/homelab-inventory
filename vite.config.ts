@@ -11,8 +11,17 @@ export default defineConfig({
     manifest: true,
     rollupOptions: {
       output: {
-        manualChunks(id) {
-          if (id.includes('/node_modules/lucide-react/')) return 'lucide-icons'
+        codeSplitting: {
+          groups: [
+            // Reserve eager dependencies before grouping controls used by lazy routes.
+            { name: 'initial-runtime', tags: ['$initial'], priority: 30 },
+            { name: 'lucide-icons', test: /\/node_modules\/lucide-react\//, priority: 20 },
+            {
+              name: 'radix-controls',
+              test: /\/node_modules\/@radix-ui\/react-(alert-dialog|dialog|dropdown-menu|menu|scroll-area|select|tooltip)\//,
+              priority: 10,
+            },
+          ],
         },
       },
     },

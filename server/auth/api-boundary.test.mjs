@@ -17,6 +17,7 @@ async function listen({ authenticated = false, allowed = false, enabled = true }
   state.configuration.enabled = enabled
   state.configuration.localEnabled = enabled
   const service = { state: () => state, sessions: { authenticateRequest: () => authenticated ? { account: { id: 1 } } : null } }
+  // Loopback-only mocked test server, excluded from production images by .dockerignore.
   // Keep Express defaults here: each guard must remain safe independently of routing hardening.
   const app = express()
   app.use(browserMutationGuard)
