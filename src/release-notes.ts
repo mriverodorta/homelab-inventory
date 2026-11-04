@@ -855,6 +855,7 @@ const RELEASE_0_16_21_DETAILS: UnreleasedReleaseNotes = {
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
+    'Fixed host inspectors not opening on a fresh Systems page until Canvas was visited. Inspector details now load on demand with close and retry controls while the Systems table remains available.',
     'Updated the authorization dependency tree to fix the minimatch resource-exhaustion vulnerability CVE-2026-118764.',
   ],
   notes: [

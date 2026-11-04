@@ -25,6 +25,11 @@ describe('workspace project loading', () => {
     expect(shouldLoadCanvasProject(false, true)).toBe(true)
   })
 
+  it('loads inspector data on selection without requiring Canvas to be opened', () => {
+    expect(shouldLoadCanvasProject(false, false, true)).toBe(true)
+    expect(shouldLoadCanvasProject(false, false, false)).toBe(false)
+  })
+
   it('creates a non-persisted empty scope for Systems rendering', () => {
     expect(createSystemsProjectScope(workbook, workbook.workspaces[0])).toEqual({
       id: 'project-4-systems',

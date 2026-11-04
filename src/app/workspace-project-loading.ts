@@ -1,8 +1,8 @@
 import type { ProjectWorkbook, WorkspaceSummary } from '@/lib/workbook-api'
 import type { ProjectState } from '@/types/inventory'
 
-export function shouldLoadCanvasProject(canvasActive: boolean, settingsOpen: boolean) {
-  return canvasActive || settingsOpen
+export function shouldLoadCanvasProject(canvasActive: boolean, settingsOpen: boolean, inspectorRequested = false) {
+  return canvasActive || settingsOpen || inspectorRequested
 }
 
 export function createSystemsProjectScope(

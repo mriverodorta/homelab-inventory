@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Open the host inspector directly from a fresh Systems page without visiting Canvas first. Load workspace details only when selected, keep the table visible during loading or failure, and support closing or retrying without losing selection.
+
 ### Security
 
 - Pin minimatch 11.0.1 to address CVE-2026-118764 in the authorization dependency tree. Add regression coverage for bounded globstar-parent expansion and unchanged Casbin authorization decisions.

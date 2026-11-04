@@ -294,7 +294,7 @@ function App() {
     queryFn: loadActiveProject,
     enabled: sourceProjectId !== null
       && sourceWorkspaceId !== null
-      && shouldLoadCanvasProject(canvasWorkspaceActive, settingsOpen),
+      && shouldLoadCanvasProject(canvasWorkspaceActive, settingsOpen, selectedItemId !== null),
     staleTime: Infinity,
     gcTime: Infinity,
   })
@@ -801,7 +801,8 @@ function App() {
     focusExampleTarget(currentExampleTarget)
   }
 
-  if (projectQuery.isError || workbookController.loadError) {
+  const fullProjectRequired = shouldLoadCanvasProject(canvasWorkspaceActive, settingsOpen)
+  if ((projectQuery.isError && fullProjectRequired) || workbookController.loadError) {
     const error = projectQuery.error ?? workbookController.loadError
 
     return (
@@ -823,7 +824,6 @@ function App() {
     ),
   )
   const surfaceProject = project ?? systemsProjectScope
-  const fullProjectRequired = shouldLoadCanvasProject(canvasWorkspaceActive, settingsOpen)
 
   if (
     workbookController.loading
@@ -995,6 +995,10 @@ function App() {
       selectedItemId,
       onSelectItem: canvasSelectionController.selectInventoryItem,
       onCloseInspector: navigationActions.clearCanvasSelection,
+      inspectorLoad: selectedItemId !== null && !projectMatchesActiveWorkspace ? {
+        failed: projectQuery.isError,
+        onRetry: () => { void projectQuery.refetch() },
+      } : undefined,
     },
     canvasRuntime: {
       activeRuntimeKey: canvasWorkspaceActive ? activeWorkspaceKey : null,

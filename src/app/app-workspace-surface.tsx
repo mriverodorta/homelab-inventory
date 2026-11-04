@@ -1,4 +1,6 @@
 import { useState, type ComponentProps } from 'react'
+import { LoaderCircle, X } from 'lucide-react'
+import { RIGHT_DRAWER_LAYOUT_CLASS_NAME } from '@/components/right-drawer-layout'
 import {
   ExampleWorkspaceGuide,
   GettingStartedChecklist,
@@ -41,6 +43,7 @@ export interface WorkbookSurfaceProps {
   selectedItemId: string | null
   onSelectItem(itemId: string): void
   onCloseInspector(): void
+  inspectorLoad?: { failed: boolean; onRetry(): void }
 }
 
 export function AppWorkspaceSurface({
@@ -54,6 +57,7 @@ export function AppWorkspaceSurface({
 }: AppWorkspaceSurfaceProps) {
   const [systemsCanvasWorkspaceId, setSystemsCanvasWorkspaceId] = useState<number | null>(null)
   const systemsActive = workbook?.workspace.type === 'systems'
+  const systemsInspectorOpen = inspector.open || Boolean(workbook?.inspectorLoad)
   const runtime = canvasRuntime ?? {
     activeRuntimeKey: systemsActive ? null : 'legacy-canvas',
     activeReady: !systemsActive,
@@ -80,16 +84,34 @@ export function AppWorkspaceSurface({
           />
           <div
             data-testid="systems-inspector-region"
-            data-open={inspector.open}
+            data-open={systemsInspectorOpen}
             className={`contents lg:relative lg:block lg:h-full lg:shrink-0 lg:overflow-hidden lg:transition-[width] lg:duration-200 lg:ease-out ${
-              inspector.open ? 'lg:w-[min(42vw,680px)]' : 'lg:w-0'
+              systemsInspectorOpen ? 'lg:w-[min(42vw,680px)]' : 'lg:w-0'
             }`}
           >
-            <SystemsInspectorPanel
-              {...inspector}
-              attentionWorkspaceId={systemsCanvasWorkspaceId}
-              layout="systems-split"
-            />
+            {workbook.inspectorLoad ? (
+              <aside aria-label="Inspector" className={`${RIGHT_DRAWER_LAYOUT_CLASS_NAME} z-40 flex flex-col border-l border-[#d6ccbd] bg-[#fffdf8] lg:absolute lg:w-full`}>
+                <button type="button" aria-label="Close inspector" title="Close inspector" onClick={workbook.onCloseInspector} className="m-3 flex size-9 shrink-0 items-center justify-center self-end rounded-md hover:bg-black/5 focus-visible:outline-2">
+                  <X className="size-4" aria-hidden="true" />
+                </button>
+                <div role={workbook.inspectorLoad.failed ? 'alert' : 'status'} className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center text-sm">
+                  {workbook.inspectorLoad.failed ? (
+                    <>
+                      <p>Inspector could not be loaded.</p>
+                      <button type="button" onClick={workbook.inspectorLoad.onRetry} className="rounded-md border px-4 py-2">Retry</button>
+                    </>
+                  ) : (
+                    <><LoaderCircle className="size-4 animate-spin" aria-hidden="true" /><p>Loading inspector</p></>
+                  )}
+                </div>
+              </aside>
+            ) : (
+              <SystemsInspectorPanel
+                {...inspector}
+                attentionWorkspaceId={systemsCanvasWorkspaceId}
+                layout="systems-split"
+              />
+            )}
           </div>
         </div>
       ) : null}

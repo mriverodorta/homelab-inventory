@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { AppWorkspaceSurface } from '@/app/app-workspace-surface'
 import type { ProjectState } from '@/types/inventory'
@@ -32,16 +32,17 @@ const project: ProjectState = {
   connections: [],
 }
 
-function renderSystems(open: boolean) {
+function renderSystems(open: boolean, inspectorLoad?: { failed: boolean; onRetry(): void }, onClose = vi.fn()) {
   return render(<AppWorkspaceSurface
     canvas={{} as never}
     inspector={{ open } as never}
     workbook={{
       workspace: { id: 1, projectId: 1, type: 'systems', name: 'Systems' } as never,
       project,
-      selectedItemId: open ? 'server:1' : null,
+      selectedItemId: open || inspectorLoad ? 'server:1' : null,
       onSelectItem: () => undefined,
-      onCloseInspector: () => undefined,
+      onCloseInspector: onClose,
+      inspectorLoad,
     }}
   />)
 }
@@ -58,5 +59,25 @@ describe('AppWorkspaceSurface Systems layout', () => {
   it('collapses the desktop inspector region when closed', () => {
     renderSystems(false)
     expect(screen.getByTestId('systems-inspector-region')).toHaveClass('lg:w-0')
+  })
+
+  it('keeps Systems visible and opens a closeable loading region before hydration', () => {
+    const close = vi.fn()
+    renderSystems(false, { failed: false, onRetry: vi.fn() }, close)
+    expect(screen.getByTestId('systems-workspace')).toBeVisible()
+    expect(screen.getByTestId('systems-inspector-region')).toHaveAttribute('data-open', 'true')
+    expect(screen.getByRole('status')).toHaveTextContent('Loading inspector')
+    expect(screen.queryByTestId('systems-inspector')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Close inspector' }))
+    expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('offers an inspector-only retry after a project load fails', () => {
+    const retry = vi.fn()
+    renderSystems(false, { failed: true, onRetry: retry })
+    expect(screen.getByTestId('systems-workspace')).toBeVisible()
+    expect(screen.getByRole('alert')).toHaveTextContent('Inspector could not be loaded')
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(retry).toHaveBeenCalledOnce()
   })
 })
