@@ -1408,7 +1408,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.16.22',
     date: '2026-11-04',
-    channel: 'latest',
+    channel: 'release',
     title: 'Systems inspector recovery and dependency security',
     ...RELEASE_0_16_22_DETAILS,
   },
