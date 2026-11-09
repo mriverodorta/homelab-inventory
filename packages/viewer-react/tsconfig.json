@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.app.json",
   "compilerOptions": {
     "tsBuildInfoFile": "../../node_modules/.tmp/viewer-react.tsbuildinfo",
-    "types": ["vite/client", "node", "vitest/globals", "@testing-library/jest-dom"]
+    "types": ["vite/client", "node", "vitest/globals", "@testing-library/jest-dom/vitest"]
   },
   "include": ["src", "test"]
 }

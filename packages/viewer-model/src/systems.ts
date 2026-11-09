@@ -1,18 +1,19 @@
 import { parseShareViewBlob, type SystemsViewBlob } from '@homelab-inventory/share-contract'
 
 import { deepFreeze, type DeepReadonly } from './immutable'
+import { presentSharedItems, type SharedPresentationContext, type SharedPresentedItem } from './item-presentation'
 
 export interface SharedSystemsModel {
   publicViewId: string
-  rows: SystemsViewBlob['items']
+  rows: SharedPresentedItem<SystemsViewBlob['items'][number]>[]
 }
 
-export function createSharedSystemsModel(value: unknown): DeepReadonly<SharedSystemsModel> {
+export function createSharedSystemsModel(value: unknown, presentation?: SharedPresentationContext): DeepReadonly<SharedSystemsModel> {
   const blob = parseShareViewBlob(value)
   if (blob.viewType !== 'systems') throw new TypeError('Expected a Systems share view.')
 
   return deepFreeze({
     publicViewId: blob.publicViewId,
-    rows: blob.items,
+    rows: presentSharedItems(blob.items, presentation),
   })
 }

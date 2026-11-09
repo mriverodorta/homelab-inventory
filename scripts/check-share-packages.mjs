@@ -19,8 +19,8 @@ const packageOrder = new Map([
 const expectedPackageVersions = new Map([
   ['@homelab-inventory/catalog-protocol', '0.1.1'],
   ['@homelab-inventory/share-contract', '0.1.0'],
-  ['@homelab-inventory/viewer-model', '0.1.0'],
-  ['@homelab-inventory/viewer-react', '0.1.0'],
+  ['@homelab-inventory/viewer-model', '0.1.1'],
+  ['@homelab-inventory/viewer-react', '0.1.1'],
 ])
 const forbiddenFragments = [
   '.env',

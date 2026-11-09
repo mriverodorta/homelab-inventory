@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { X } from 'lucide-react'
 
 import type { DeepReadonly, SharedSystemsModel } from '@homelab-inventory/viewer-model'
+import { sharedItemTypeLabel } from '@homelab-inventory/viewer-model'
 
 import type { ShareViewerIntent } from './index'
 
@@ -25,7 +26,7 @@ export function SharedInspector({ item, onIntent }: SharedInspectorProps) {
     <aside className="hi-share-viewer__inspector" aria-label={`${item.name} details`}>
       <header className="hi-share-viewer__inspector-header">
         <div>
-          <span className="hi-share-viewer__eyebrow">{item.type}</span>
+          <span className="hi-share-viewer__eyebrow">{sharedItemTypeLabel(item)}</span>
           <h2>{item.name}</h2>
         </div>
         <button

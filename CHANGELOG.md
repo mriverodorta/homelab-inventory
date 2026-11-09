@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Shared viewer packages display Computer, Desktop PC, Laptop, Workstation and Server from validated custom or exact historical Registry evidence without changing immutable share payloads, IDs or hashes; NAS and PC Build retain their labels.
+
 ## [0.16.22] - 2026-11-04
 
 ### Fixed

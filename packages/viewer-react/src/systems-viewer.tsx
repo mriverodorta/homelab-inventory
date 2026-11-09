@@ -1,4 +1,5 @@
 import type { DeepReadonly, SharedSystemsModel } from '@homelab-inventory/viewer-model'
+import { sharedItemTypeLabel } from '@homelab-inventory/viewer-model'
 
 import type { ShareViewerIntent } from './index'
 
@@ -25,7 +26,7 @@ export function SharedSystemsViewer({ model, selectedItemId, onIntent }: SharedS
             const selected = selectedItemId === item.publicItemId
             return (
               <tr key={item.publicItemId} data-selected={selected || undefined}>
-                <td className="hi-share-viewer__system-type">{item.type}</td>
+                <td className="hi-share-viewer__system-type">{sharedItemTypeLabel(item)}</td>
                 <td>
                   <button
                     className="hi-share-viewer__row-button"

@@ -5,19 +5,20 @@ import {
 } from '@homelab-inventory/share-contract'
 
 import { deepFreeze, type DeepReadonly } from './immutable'
+import { presentSharedItems, type SharedPresentationContext, type SharedPresentedItem } from './item-presentation'
 
 type CanvasNode = CanvasViewBlob['nodes'][number]
 type CanvasConnection = CanvasViewBlob['connections'][number]
 type PublicPort = PublicItem['ports'][number]
 
 export interface SharedCanvasNode extends CanvasNode {
-  item: PublicItem
+  item: SharedPresentedItem
 }
 
 export interface SharedCanvasEndpoint {
   publicItemId: string
   publicPortId?: string
-  item: PublicItem
+  item: SharedPresentedItem
   port?: PublicPort
 }
 
@@ -28,7 +29,7 @@ export interface SharedCanvasConnection extends Omit<CanvasConnection, 'source' 
 
 export interface SharedCanvasModel {
   publicViewId: string
-  items: CanvasViewBlob['items']
+  items: SharedPresentedItem[]
   nodes: SharedCanvasNode[]
   connections: SharedCanvasConnection[]
   viewport: CanvasViewBlob['viewport'] | null
@@ -46,7 +47,7 @@ function uniqueMap<T>(entries: readonly T[], keyOf: (entry: T) => string, label:
 
 function resolveEndpoint(
   endpoint: CanvasConnection['source'],
-  items: Map<string, PublicItem>,
+  items: Map<string, SharedPresentedItem>,
 ): SharedCanvasEndpoint {
   const item = items.get(endpoint.publicItemId)
   if (!item) throw new TypeError(`Connection references missing item ${endpoint.publicItemId}.`)
@@ -63,11 +64,12 @@ function resolveEndpoint(
   }
 }
 
-export function createSharedCanvasModel(value: unknown): DeepReadonly<SharedCanvasModel> {
+export function createSharedCanvasModel(value: unknown, presentation?: SharedPresentationContext): DeepReadonly<SharedCanvasModel> {
   const blob = parseShareViewBlob(value)
   if (blob.viewType !== 'canvas') throw new TypeError('Expected a Canvas share view.')
 
-  const items = uniqueMap(blob.items, (item) => item.publicItemId, 'item')
+  const presentedItems = presentSharedItems(blob.items, presentation)
+  const items = uniqueMap(presentedItems, (item) => item.publicItemId, 'item')
   const rawNodes = uniqueMap(blob.nodes, (node) => node.publicNodeId, 'node')
   uniqueMap(blob.connections, (connection) => connection.publicConnectionId, 'connection')
 
@@ -91,7 +93,7 @@ export function createSharedCanvasModel(value: unknown): DeepReadonly<SharedCanv
 
   return deepFreeze({
     publicViewId: blob.publicViewId,
-    items: blob.items,
+    items: presentedItems,
     nodes,
     connections,
     viewport: blob.viewport ?? null,

@@ -1,6 +1,6 @@
 {
   "name": "@homelab-inventory/viewer-react",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Read-only React viewers for Homelab Inventory shares.",
   "license": "MIT",
   "type": "module",
@@ -17,7 +17,7 @@
     "./viewer.css": "./src/viewer.css"
   },
   "dependencies": {
-    "@homelab-inventory/viewer-model": "0.1.0",
+    "@homelab-inventory/viewer-model": "0.1.1",
     "@xyflow/react": "^12.12.0",
     "lucide-react": "^1.66.0"
   },

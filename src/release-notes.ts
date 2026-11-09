@@ -865,7 +865,7 @@ const RELEASE_0_16_22_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
+  highlights: ['Shared viewer packages now use the same physical computer labels across systems, canvas, inspectors and previews while preserving existing share identities.'],
   fixes: [],
   notes: [],
 }

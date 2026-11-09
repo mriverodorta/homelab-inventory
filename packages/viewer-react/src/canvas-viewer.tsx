@@ -12,6 +12,7 @@ import {
 } from '@xyflow/react'
 
 import type { DeepReadonly, SharedCanvasModel, SharedCanvasNode } from '@homelab-inventory/viewer-model'
+import { sharedItemTypeLabel } from '@homelab-inventory/viewer-model'
 
 import type { ShareViewerIntent } from './index'
 
@@ -26,7 +27,7 @@ function SharedItemNode({ data, selected }: NodeProps<ViewerNode>) {
       aria-label={data.sharedNode.item.name}
       aria-pressed={selected}
     >
-      <span className="hi-share-viewer__canvas-node-type">{data.sharedNode.item.type}</span>
+      <span className="hi-share-viewer__canvas-node-type">{sharedItemTypeLabel(data.sharedNode.item)}</span>
       <strong>{data.sharedNode.item.name}</strong>
       {(data.sharedNode.item.manufacturer || data.sharedNode.item.model) && (
         <span>{[data.sharedNode.item.manufacturer, data.sharedNode.item.model].filter(Boolean).join(' ')}</span>
