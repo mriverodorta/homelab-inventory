@@ -18,7 +18,7 @@ type OpenAuditFilter = Exclude<AuditFilter, 'metadata' | 'ignored'>
 
 const FILTERS: Array<{ label: string; value: AuditFilter }> = [
   { label: 'All', value: 'all' },
-  { label: 'Servers', value: 'server' },
+  { label: 'Computers', value: 'server' },
   { label: 'Patch Panels', value: 'patchPanel' },
   { label: 'Switches', value: 'switch' },
   { label: 'Stale', value: 'stale' },

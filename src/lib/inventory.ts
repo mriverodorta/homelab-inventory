@@ -36,7 +36,7 @@ export const INVENTORY_CATEGORY_ORDER = [
 ] as const satisfies readonly InventoryType[]
 
 export const INVENTORY_TYPE_LABELS: Record<InventoryType, string> = {
-  server: 'Server',
+  server: 'Computer',
   pcBuild: 'PC Build',
   cpu: 'CPU',
   cpuCooler: 'CPU Cooler',
@@ -242,6 +242,7 @@ export function normalizeInventory(input: unknown): InventoryItem[] {
       type,
       hardwareClass:
         raw.hardwareClass === 'desktop'
+        || raw.hardwareClass === 'laptop'
         || raw.hardwareClass === 'workstation'
         || raw.hardwareClass === 'server'
           ? raw.hardwareClass

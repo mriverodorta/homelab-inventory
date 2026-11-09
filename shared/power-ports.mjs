@@ -1,5 +1,24 @@
 const POWER_ITEM_TYPES = new Set(['ups', 'powerStrip', 'monitor', 'powerAdapter', 'powerSupply', 'nas'])
 
+export function isLaptop(item) {
+  return item?.type === 'laptop' || (item?.type === 'server' && item.hardwareClass === 'laptop')
+}
+
+export function laptopPowerTopology(item) {
+  const power = item?.compatibility?.host?.power
+  return {
+    configuration: isNasPowerConfiguration(power?.configuration) ? power.configuration : undefined,
+    adapterDisposition: power?.configuration === 'external-adapter'
+      && ['fixed', 'replaceable'].includes(power?.adapterDisposition) ? power.adapterDisposition : undefined,
+  }
+}
+
+export function laptopOwnsPowerEndpoint(item) {
+  const power = laptopPowerTopology(item)
+  return power.configuration === 'internal-psu'
+    || (power.configuration === 'external-adapter' && power.adapterDisposition === 'fixed')
+}
+
 export const NAS_POWER_CONFIGURATIONS = Object.freeze([
   'internal-psu',
   'external-adapter',
@@ -72,6 +91,9 @@ function powerPort(id, key, type, slotNumber, label) {
 }
 
 function canonicalPowerPortTemplates(item) {
+  if (isLaptop(item)) return laptopOwnsPowerEndpoint(item)
+    ? [{ ...powerPort(1, 'ac-input', 'ac-input', 1, 'AC input'), origin: 'fixed' }]
+    : []
   if (!POWER_ITEM_TYPES.has(item?.type)) return item?.ports ?? []
 
   if (item.type === 'nas') {
@@ -131,12 +153,18 @@ export function canonicalPowerPorts(item) {
     const id = persisted && Number.isSafeInteger(persisted.id) && persisted.id > 0
       ? persisted.id
       : nextFreePositiveId(usedIds, template.id)
-    return { ...persisted, ...template, id }
+    return { ...persisted, ...template, id,
+      ...(isLaptop(item) && !persisted ? { derivedFromHostPower: true } : {}),
+    }
   })
 }
 
 export function withCanonicalPowerPorts(item) {
-  if (!POWER_ITEM_TYPES.has(item?.type)) return item
+  if (!POWER_ITEM_TYPES.has(item?.type) && !isLaptop(item)) return item
+  const localCatalogEvidence = isLaptop(item) ? item.localCatalogEvidence ?? {
+    ports: item.ports !== undefined,
+    fixedComponents: item.fixedComponents !== undefined,
+  } : undefined
 
   const templates = canonicalPowerPortTemplates(item)
   const claimedKeys = new Set(
@@ -164,8 +192,10 @@ export function withCanonicalPowerPorts(item) {
   ))
   const merged = [...retained, ...canonical]
   const next = { ...item }
+  if (localCatalogEvidence) next.localCatalogEvidence = localCatalogEvidence
 
   if (merged.length > 0) next.ports = merged
+  else if (localCatalogEvidence?.ports) next.ports = []
   else delete next.ports
 
   return next

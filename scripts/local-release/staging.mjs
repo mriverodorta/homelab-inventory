@@ -39,7 +39,7 @@ Bun.serve({
   async fetch(request) {
     const source = new URL(request.url)
     const headers = new Headers(request.headers)
-    headers.delete('host')
+    headers.set('host', source.host)
     headers.delete('connection')
     headers.set('accept-encoding', 'identity')
     try {

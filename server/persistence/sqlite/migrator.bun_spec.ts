@@ -33,6 +33,23 @@ async function createHandle() {
 }
 
 describe('committed SQLite migrations', () => {
+  test('rolls back an intermediate marked statement failure before later SQL can hide it', async () => {
+    const handle = await createHandle()
+    try {
+      const sql = `-- homelab:statement-breakpoints
+CREATE TABLE intermediate_guard(value INTEGER UNIQUE);
+--> statement-breakpoint
+INSERT INTO intermediate_guard VALUES(1);
+--> statement-breakpoint
+INSERT INTO intermediate_guard VALUES(1);
+--> statement-breakpoint
+CREATE TABLE must_not_execute(id INTEGER PRIMARY KEY);`
+      await expect(applyCommittedMigrations(handle, [migration('0001_guard', sql)])).rejects.toThrow(/UNIQUE/iu)
+      expect(handle.database.query("SELECT name FROM sqlite_schema WHERE name IN ('intermediate_guard', 'must_not_execute')").all()).toEqual([])
+      expect(handle.database.query('PRAGMA user_version').get()).toEqual({ user_version: 0 })
+    } finally { closeManagedDatabase(handle) }
+  })
+
   test('does not mask a final SQL constraint failure with trailing whitespace', async () => {
     const handle = await createHandle()
     try {

@@ -34,7 +34,7 @@ export const INVENTORY_TYPES: InventoryType[] = [
 ]
 
 export const TYPE_LABELS: Partial<Record<InventoryType, string>> = {
-  server: 'Server',
+  server: 'Computer',
   nas: 'NAS',
   pcBuild: 'PC Build',
   cpu: 'CPU',
@@ -88,6 +88,7 @@ export const NAS_POWER_CONFIGURATION_OPTIONS = [
 ] as const
 export const STORAGE_FORM_FACTORS = ['', '2230', '2242', '2260', '2280', '2.5"', '3.5"', 'eMMC']
 export const SERVER_FORM_FACTORS = [
+  'Laptop',
   'Tiny',
   'Mini',
   'Micro',
@@ -106,6 +107,7 @@ export const SERVER_FORM_FACTORS = [
 ]
 export const SERVER_HARDWARE_CLASS_OPTIONS: ReadonlyArray<{ value: HardwareClass; label: string }> = [
   { value: 'desktop', label: 'Desktop PC' },
+  { value: 'laptop', label: 'Laptop' },
   { value: 'workstation', label: 'Workstation' },
   { value: 'server', label: 'Server' },
 ]

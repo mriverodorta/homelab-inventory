@@ -4,6 +4,7 @@ import { getCoreRowModel, useLegacyTable, type LegacyColumnDef } from '@tanstack
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ArrowDown, ArrowUp, ArrowUpDown, Link, Server, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { ComputeHostIcon } from '@/components/compute-host-icon'
+import { itemPresentationLabel } from '@/components/inspector/shared/item-formatters'
 import { InventoryTagPreview } from '@/components/inventory/inventory-tag-preview'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -107,7 +108,7 @@ function formatUptime(value: number | null) {
 }
 
 function TypeCell({ system }: { system: SystemsHostRow }) {
-  const label = system.type === 'nas' ? 'NAS' : system.hardwareClass === 'desktop' && system.usageRole !== 'server' ? 'PC' : 'Server'
+  const label = itemPresentationLabel({ type: system.type, hardwareClass: system.hardwareClass ?? undefined })
   return (
     <Tooltip>
       <TooltipTrigger asChild>

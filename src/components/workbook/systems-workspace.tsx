@@ -38,7 +38,7 @@ import type { WorkspaceSummary } from '@/lib/workbook-api'
 import { readyInventoryMetadataFilters, type InventoryMetadataCatalog } from '@/types/inventory-metadata'
 import type { SystemsColumnKey, SystemsHostRow, SystemsHostType, SystemsSavedView, SystemsViewConfiguration } from '@/types/systems'
 
-const TYPE_LABELS: Record<SystemsHostType, string> = { server: 'Server', nas: 'NAS', pcBuild: 'PC' }
+const TYPE_LABELS: Record<SystemsHostType, string> = { server: 'Computer', nas: 'NAS', pcBuild: 'PC' }
 const EMPTY_METADATA_CATALOG: InventoryMetadataCatalog = { revision: 0, definitions: [], tags: [] }
 
 type SystemsWorkspaceProps = {

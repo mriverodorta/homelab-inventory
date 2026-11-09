@@ -40,6 +40,7 @@ export const itemPortDetails = sqliteTable('item_port_details', {
   speedBps: integer('speed_bps'),
   poe: integer('poe', { mode: 'boolean' }),
   origin: text('origin').notNull().default('fixed'),
+  derivedFromHostPower: integer('derived_from_host_power', { mode: 'boolean' }).notNull().default(false),
 }, (table) => [
   index('item_port_details_group_index').on(table.portGroupId),
   index('item_port_details_kind_index').on(table.kindId),

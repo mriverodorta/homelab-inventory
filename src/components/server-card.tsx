@@ -10,6 +10,8 @@ import { RegistryLinkIndicator } from '@/components/registry-link-indicator'
 import { MemorySlotGrid } from '@/components/memory-slot-grid'
 import { hostMemorySlotCount } from '@/components/memory-slot-model'
 import { CpuSlotGrid } from '@/components/cpu-slot-grid'
+import { FixedComponentCard } from '@/components/fixed-component-card'
+import { isLaptop, laptopOwnsPowerEndpoint } from '../../shared/power-ports.mjs'
 import { hostCpuSocketCount } from '@/components/cpu-slot-model'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { getVisibleServerSlotTypes, SLOT_LABELS, sortAssignmentsForDisplay } from '@/lib/constraints'
@@ -152,6 +154,7 @@ function nicSpeedTooltipLabel(port: InventoryPort): string | null {
 }
 
 function portTypeChipLabel(type: InventoryPortType): string {
+  if (type === 'ac-input') return 'AC'
   if (type === 'rj45') {
     return 'NIC'
   }
@@ -693,7 +696,7 @@ function ServerBoardPortRow({
   requiredHandleIds: ReadonlySet<string>
   server: InventoryItem
 }) {
-  const ports = sortPorts(server.ports)
+  const ports = sortPorts(server.ports).filter((port) => !(isLaptop(server) && port.type === 'ac-input'))
   const serverRuntimeKey = runtimeItemKey(server)
 
   if (ports.length === 0) {
@@ -764,6 +767,9 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
   }
 
   const serverDisplayName = server.properties?.displayName?.trim()
+  const hostPowerPort = isLaptop(server) && laptopOwnsPowerEndpoint(server)
+    ? server.ports?.find((port) => port.key === 'ac-input' && port.type === 'ac-input')
+    : undefined
   const usageRoleLabel = equipmentUsageRoleLabel(server.usageRole)
   const physicalClassLabel = hardwareClassLabel(server.hardwareClass)
   const serverAgentStatus = getServerAgentStatus(agentStatus, server.id)
@@ -809,6 +815,19 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
           </div>
         </div>
         <RegistryLinkIndicator visible={registryLinkedItemKeys.has(serverRuntimeKey)} />
+        {hostPowerPort ? (
+          <PortChip
+            canvasIndex={canvasIndex}
+            draggingEndpoint={draggingEndpoint}
+            endpoint={{ itemId: serverRuntimeKey, portId: hostPowerPort.id }}
+            onEndpointClick={onEndpointClick}
+            onEndpointDragStart={onEndpointDragStart}
+            onEndpointDrop={onEndpointDrop}
+            pendingEndpoint={pendingEndpoint}
+            port={hostPowerPort}
+            requiredHandleIds={requiredHandleIds}
+          />
+        ) : null}
         <span
           className={`size-2.5 shrink-0 rounded-full ring-2 ring-[#20242c] ${agentStateTone(serverAgentStatus.state)}`}
           title={`Agent: ${serverAgentStatus.state}`}
@@ -827,6 +846,9 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
       />
 
       <div className="mt-2 space-y-1.5">
+        {(server.fixedComponents ?? []).map((component) => (
+          <FixedComponentCard key={component.id} component={component} compact />
+        ))}
         {visibleSlotTypes.map((type) => {
           const matches = assignments.filter((assignment) => assignment.type === type)
 

@@ -1407,7 +1407,15 @@ export class SqliteHomelabInventoryStore {
     if (current.archivedAt) {
       throw lifecycleError('Restore the item before editing it.', 'inventory-item-archived', 409)
     }
-    const { item } = normalizeInventoryItemInput({ ...input, type: ref.type }, ref.id)
+    const localInput = current.hardwareClass === 'laptop' ? {
+      ...input,
+      localCatalogEvidence: input.localCatalogEvidence ?? current.localCatalogEvidence,
+      ...(Array.isArray(input.ports) ? { ports: input.ports.map((port: Row) => ({
+        ...port,
+        derivedFromHostPower: port.derivedFromHostPower ?? current.ports?.find((existing: Row) => existing.id === port.id)?.derivedFromHostPower,
+      })) } : {}),
+    } : input
+    const { item } = normalizeInventoryItemInput({ ...localInput, type: ref.type }, ref.id)
     const record = cleanItemForStore(item)
     if (
       ref.type === 'nas'

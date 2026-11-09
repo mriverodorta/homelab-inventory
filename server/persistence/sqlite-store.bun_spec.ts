@@ -18,6 +18,8 @@ import { openManagedDatabase } from './sqlite/database.ts'
 import { applyCommittedMigrations } from './sqlite/migrator.ts'
 import { SqliteHomelabInventoryStore } from './sqlite-store.ts'
 import nasV10Fixture from '../../packages/catalog-protocol/test/fixtures/server-specs-inventory-nas-v10.json'
+import laptopV13Vectors from '../../packages/catalog-protocol/src/laptop-v13-vectors.json'
+import { projectLocalLaptopForCatalog } from '../registry/laptop-local-projection.mjs'
 import networkV11Fixture from '../../packages/catalog-protocol/test/fixtures/network/server-specs-inventory-network-v11.json'
 import { projectLocalItemForCatalog } from '../registry/local-catalog-mapping.mjs'
 import { AuthService } from '../auth/auth-service.mjs'
@@ -2179,6 +2181,78 @@ describe('SQLite Homelab Inventory store facade', () => {
       const restored = Object.values(store.getProject().items).find((item) => item.type === 'nas') as any
       expect(restored.fixedComponents).toEqual(nas.fixedComponents)
       expect(restored.compatibility.host.storageSlots).toEqual(nas.compatibility.host.storageSlots)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('round-trips every frozen laptop v13 definition without changing existing topology', async () => {
+    const store = await fixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.snapshot = { sourceId: 1, revision: 1, generatedAt: '2026-01-01T00:00:00.000Z', expiresAt: null,
+          activatedAt: '2026-01-01T00:00:00.000Z', digest: 'd'.repeat(64), templateCount: 10, keyId: 'synthetic-test-key' }
+      })
+      const before = store.getProject()
+      const checks = []
+      const emptyEvidence = { ...structuredClone(laptopV13Vectors.cases[0].item), ports: [], fixedComponents: [] }
+      const declaredPower = structuredClone(laptopV13Vectors.cases.find(vector => vector.name === 'power-fixed')!.item) as any
+      declaredPower.ports = [{ id: 5, key: 'ac-input', kind: 'power-port', type: 'ac-input', origin: 'fixed', slotNumber: 1 }]
+      const constraintIds = structuredClone(laptopV13Vectors.cases.find(vector => vector.name === 'semantic-relationships')!.item) as any
+      constraintIds.compatibility.host.constraintGroups[0].id = 37
+      const cases = [...laptopV13Vectors.cases, { item: emptyEvidence }, { item: declaredPower }, { item: constraintIds }]
+      for (const [index, vector] of cases.entries()) {
+        const template = await catalogTemplate(vector.item, 1, `synthetic-laptop-${index}`, 13)
+        const project = store.createCatalogInventoryItems(template)
+        const laptop = Object.values(project.items).filter((item) => item.hardwareClass === 'laptop').at(-1)!
+        expect(laptop.type).toBe('server')
+        expect(laptop.fixedComponents ?? []).toEqual(vector.item.fixedComponents ?? [])
+        const canonical = projectLocalLaptopForCatalog(laptop)
+        expect(canonical).not.toHaveProperty('localCatalogEvidence')
+        expect((await digestCatalogTemplate(canonical, { fingerprintVersion: 13 })).identityHash).toBe(template.identityHash)
+        const expected = structuredClone(vector.item.compatibility) as any
+        for (const collection of ['storageSlots', 'optionalModuleSlots', 'controllerSlots', 'bootDeviceSlots', 'constraintGroups']) {
+          for (const resource of expected.host[collection] ?? []) resource.label ??= resource.key
+        }
+        expect(canonical.compatibility).toEqual(expected)
+        const resources = () => store.core.database.query(`SELECT r.id, g.resource_type, g.semantic_key, s.id AS slot_id, s.position
+          FROM inventory_resources r JOIN host_resource_groups g ON g.resource_identity_id = r.id
+          LEFT JOIN host_resource_slots s ON s.resource_group_id = g.id
+          JOIN inventory_identity_aliases a ON a.item_id = r.item_id
+          WHERE a.legacy_type_key = 'server' AND a.legacy_id = ? ORDER BY r.id, s.id`).all(laptop.id)
+        const resourceIds = resources()
+        store.updateInventoryItem({ type: 'server', id: laptop.id }, { ...laptop, name: `${laptop.name} local` })
+        expect(resources()).toEqual(resourceIds)
+        const nextItem = structuredClone(vector.item) as any
+        nextItem.compatibility.host.memory.maxSpeedMt = 5600
+        const nextTemplate = await catalogTemplate(nextItem, 2, template.templateKey, 13)
+        const link = (store.getRegistryState() as any).links.find((entry: any) => entry.itemType === 'server' && entry.itemId === laptop.id)
+        store.registryTransaction((draft: any) => {
+          const target = draft.links.find((entry: any) => entry.id === link.id)
+          target.state = 'update-available'
+          target.availableRevision = 2
+          target.availableContentHash = nextTemplate.contentHash
+        })
+        const updated = store.applyCatalogUpdate(link.id, nextTemplate)
+        expect(resources()).toEqual(resourceIds)
+        const updatedLaptop = updated.items[`server:${laptop.id}`]
+        expect(updatedLaptop.name).toBe(`${laptop.name} local`)
+        expect(updatedLaptop.compatibility?.host?.memory?.maxSpeedMt).toBe(5600)
+        expect((store.getRegistryState() as any).links.find((entry: any) => entry.id === link.id).importedRevision).toBe(2)
+        checks.push({ id: laptop.id, compatibility: projectLocalLaptopForCatalog(updatedLaptop).compatibility, fixedComponents: laptop.fixedComponents, identityHash: template.identityHash })
+      }
+      const after = store.getProject()
+      expect(after.assignments).toEqual(before.assignments)
+      expect(after.connections).toEqual(before.connections)
+      expect(after.placements).toEqual(before.placements)
+      const backup = await store.snapshotStores()
+      await store.replaceStoresAtomically(backup)
+      for (const check of checks) {
+        const laptop = Object.values(store.getProject().items).find((item) => item.type === 'server' && item.id === check.id)!
+        expect(projectLocalLaptopForCatalog(laptop).compatibility).toEqual(check.compatibility)
+        expect(laptop.fixedComponents).toEqual(check.fixedComponents)
+        expect((await digestCatalogTemplate(projectLocalLaptopForCatalog(laptop), { fingerprintVersion: 13 })).identityHash).toBe(check.identityHash)
+      }
     } finally {
       store.close()
     }

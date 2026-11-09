@@ -6,6 +6,7 @@ import {
   LEGACY_TABLE_BY_TYPE,
   LEGACY_IMPORT_TABLE_BY_TYPE,
   legacyResourceDefinitions,
+  resourcePlanKey,
   type CanonicalIdentityPlan,
   type LegacyInventoryType,
 } from '../legacy/identity-plan.ts'
@@ -577,7 +578,7 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
     ['power-connector', host.powerConnectors, 'power'],
   ] as const) {
     records(collection).forEach((entry, index) => typedCollections.set(
-      String(entry.key ?? `${prefix}-${index + 1}`),
+      resourcePlanKey(item, resourceType, String(entry.key ?? `${prefix}-${index + 1}`)),
       { entry, resourceType },
     ))
   }
@@ -601,7 +602,8 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
     const resourceType = type === 'pcBuild' && ['motherboard', 'case', 'power'].includes(definition.key) ? definition.key
       : definition.key === 'cpu-cooling' && type === 'motherboard' ? 'cooling'
       : definition.key === 'cpu' ? 'cpu' : definition.key === 'memory' ? 'memory' : definition.key === 'power-adapter' ? 'powerAdapter' : definition.key === 'psu' ? 'psuBay' : typed?.resourceType ?? 'optionalModule'
-    database.query('INSERT INTO host_resource_groups (id, resource_identity_id, host_item_id, resource_type, semantic_key, label, slot_count, required_cpu_sockets, location, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(resourceIdentityId, resourceIdentityId, itemId, resourceType, definition.key, optionalText(entry.label) ?? definition.key, definition.count, positiveIntegerOrNull(entry.requiredCpuSockets), optionalText(entry.location), now)
+    const semanticKey = definition.semanticKey ?? definition.key
+    database.query('INSERT INTO host_resource_groups (id, resource_identity_id, host_item_id, resource_type, semantic_key, label, slot_count, required_cpu_sockets, location, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(resourceIdentityId, resourceIdentityId, itemId, resourceType, semanticKey, optionalText(entry.label) ?? semanticKey, definition.count, positiveIntegerOrNull(entry.requiredCpuSockets), optionalText(entry.location), now)
     if (resourceType === 'storage') {
       database.query('INSERT INTO storage_resource_groups (id, pcie_generation, hot_swap, backplane, direct_connect) VALUES (?, ?, ?, ?, ?)').run(resourceIdentityId, positiveIntegerOrNull(entry.pcieGeneration), booleanOrNull(entry.hotSwap), optionalText(entry.backplane), booleanOrNull(entry.directConnect))
       for (const value of records(entry.interfaces)) { const id = vocabularyId(database, 'storage_interfaces', value); if (id) database.query('INSERT INTO storage_resource_interfaces (resource_group_id, interface_id) VALUES (?, ?)').run(resourceIdentityId, id) }
@@ -732,7 +734,7 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
       const slotKey = `${groupKey}:slot:${position}`
       const slotId = plan.resourceSlots.get(slotKey)
       if (!slotId) throw new Error(`Missing resource slot identity ${slotKey}.`)
-      database.query('INSERT INTO host_resource_slots (id, resource_group_id, host_item_id, position, label, single_capacity, created_at_ms) VALUES (?, ?, ?, ?, ?, 1, ?)').run(slotId, resourceIdentityId, itemId, position, `${optionalText(entry.label) ?? definition.key} ${position}`, now)
+      database.query('INSERT INTO host_resource_slots (id, resource_group_id, host_item_id, position, label, single_capacity, created_at_ms) VALUES (?, ?, ?, ?, ?, 1, ?)').run(slotId, resourceIdentityId, itemId, position, `${optionalText(entry.label) ?? semanticKey} ${position}`, now)
       if (slotTable[resourceType]) database.query(`INSERT INTO ${slotTable[resourceType]} (id) VALUES (?)`).run(slotId)
     }
   }
@@ -782,7 +784,8 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
     for (const mode of records(host.power.redundancyModes)) database.query('INSERT INTO host_power_redundancy_modes (power_profile_id, mode) VALUES (?, ?)').run(power.id, String(mode))
   }
   for (const constraint of records(host.constraintGroups)) {
-    const inserted = database.query('INSERT INTO compatibility_constraint_groups (host_profile_id, semantic_key, label, kind) VALUES (?, ?, ?, ?) RETURNING id').get(profile.id, constraint.key, constraint.label, constraint.kind) as { id: number }
+    const inserted = database.query('INSERT INTO compatibility_constraint_groups (host_profile_id, semantic_key, label, kind) VALUES (?, ?, ?, ?) RETURNING id').get(profile.id, constraint.key, optionalText(constraint.label) ?? constraint.key, constraint.kind) as { id: number }
+    if (item.hardwareClass === 'laptop') database.query('UPDATE compatibility_constraint_groups SET catalog_resource_id = ? WHERE id = ?').run(positiveIntegerOrNull(constraint.id), inserted.id)
     const resourceTypeMap: Record<string, string> = { 'storage-slot': 'storage', 'expansion-slot': 'expansion', 'optional-module-slot': 'optionalModule', 'controller-slot': 'controllerSlot', 'boot-device-slot': 'bootDeviceSlot', 'cooling-profile': 'coolingProfile' }
     for (const member of records(constraint.members)) {
       const resourceGroupId = groupByTypedId.get(`${resourceTypeMap[member.resourceType]}:${member.resourceId}`)
@@ -825,6 +828,7 @@ function importPorts(
       `).run(portId, item.id, port.id, now)
     }
     database.query('INSERT INTO item_port_details (port_id, kind_id, connector_type_id, semantic_key, slot_number, label, notes, ip_address, role, speed_bps, poe, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(portId, kindId, connectorId, optionalText(port.key), slotNumber, optionalText(port.label), optionalText(port.notes), optionalText(port.ipAddress), portRole(port.role), canonicalMeasurement(port.speedBps, speedBps(port.speed), (value) => value, `ports.${port.id}.speedBps`), booleanOrNull(port.poe), port.origin === 'module' ? 'module' : 'fixed')
+    if (item.hardwareClass === 'laptop' && port.derivedFromHostPower === true) database.query('UPDATE item_port_details SET derived_from_host_power = 1 WHERE port_id = ?').run(portId)
     if (type === 'network') {
       const adapterTechnology = optionalText(item.specs?.networkTechnology) ?? 'ethernet'
       const portTechnology = optionalText(port.networkTechnology) ?? adapterTechnology
@@ -1374,13 +1378,13 @@ export function replaceLegacyInventoryItem({
   )
   const targetResourceKey = (slot: LegacyRecord) => {
     const remap = resourceKeyRemaps.get(slot.current_resource_key)
-    if (!remap) return slot.current_resource_key
+    if (!remap) return resourcePlanKey(item, slot.resource_type, slot.current_resource_key)
     if (
       remap.fromResourceType !== slot.resource_type
       || remap.fromResourceId !== slot.legacy_resource_group_id
       || !remap.assignmentIds.has(slot.assignment_id)
     ) throw new Error(`Assignment ${slot.assignment_id} is not covered by its resource-key remap.`)
-    return remap.toKey
+    return resourcePlanKey(item, remap.toResourceType, remap.toKey)
   }
   const actualAssignmentsByRemap = new Map<string, Set<number>>()
   for (const slot of [...assignmentSlots, ...primaryOnlySlots]) {
@@ -1557,6 +1561,7 @@ function assignmentSlot(snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, a
     if (!group) throw new Error(`Assignment ${assignment.id} references missing ${resourceType} group ${assignment.allocation.groupId}.`)
     resourceKey = group.key ?? `${resourceType}-${collection.indexOf(group) + 1}`
   }
+  resourceKey = resourcePlanKey(findLegacyItem(snapshot, source.type, source.id), resourceType, resourceKey)
   const slotId = plan.resourceSlots.get(`${source.type}:${source.id}:resource:${resourceKey}:slot:${Number(position) + 1}`) ?? null
   if (assignment.hostType === 'pcBuild' && slotId === null) throw new Error('PC component allocation references a missing motherboard resource slot.')
   return slotId

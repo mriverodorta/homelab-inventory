@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { projectCatalogItem } from '../../packages/catalog-protocol/src/index.ts'
 import {
   localInventoryTypeForCatalogType,
   materializeCatalogItem,
@@ -6,6 +7,13 @@ import {
 } from './local-catalog-mapping.mjs'
 
 describe('local catalog equipment mapping', () => {
+  it('does not misclassify unsupported laptop contributions as desktops', async () => {
+    const item = projectLocalItemForCatalog({ id: 1, type: 'server', name: 'Example laptop', hardwareClass: 'laptop', usageRole: 'server' })
+    expect(item.type).toBe('laptop')
+    expect(item).not.toHaveProperty('usageRole')
+    expect(await projectCatalogItem(item)).toMatchObject({ status: 'ineligible', reason: 'unsupported-type' })
+  })
+
   it('projects a locally used server by physical class without leaking its usage role', () => {
     expect(projectLocalItemForCatalog({
       id: 4,

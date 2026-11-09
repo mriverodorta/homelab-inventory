@@ -34,7 +34,7 @@ export type InventorySpecValue =
   | { [key: string]: InventorySpecValue }
 export type InventorySpecs = Record<string, InventorySpecValue>
 export type InventoryProperties = Record<string, string>
-export type HardwareClass = 'desktop' | 'workstation' | 'server'
+export type HardwareClass = 'desktop' | 'workstation' | 'server' | 'laptop'
 export type EquipmentUsageRole = 'server' | 'desktop' | 'workstation' | 'other'
 export type NasPowerConfiguration = 'internal-psu' | 'external-adapter'
 export type SmartPowerStripOutletName = {
@@ -124,6 +124,7 @@ export type InventoryPort = {
   vendorLock?: boolean
   poe?: boolean
   origin?: InventoryPortOrigin
+  derivedFromHostPower?: boolean
   endpoints?: InventoryPortEndpoint[]
 }
 
@@ -190,6 +191,7 @@ export type InventoryConnection = {
 }
 
 export type InventoryItem = {
+  localCatalogEvidence?: { ports: boolean; fixedComponents: boolean }
   id: number
   inventoryId?: number
   key?: string

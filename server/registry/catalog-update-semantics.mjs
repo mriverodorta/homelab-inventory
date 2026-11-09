@@ -3,15 +3,19 @@ import {
   NAS_FINGERPRINT_VERSION,
   NETWORK_FINGERPRINT_VERSION,
   M2_AE_FINGERPRINT_VERSION,
+  LAPTOP_FINGERPRINT_VERSION,
   canonicalJson,
   canonicalizeCatalogItemV10,
   canonicalizeCatalogItemV11,
   canonicalizeCatalogItemV12,
+  canonicalizeCatalogItemV13,
   canonicalizeCatalogItemV12UpdateCurrent,
   canonicalizeCatalogItemV9,
   parseLegacySpeedBps,
   sanitizeCatalogItem,
+  projectLaptopHashValue,
 } from '../../packages/catalog-protocol/src/index.ts'
+import { projectLocalLaptopForCatalog } from './laptop-local-projection.mjs'
 import {
   planWlanResourceMigration,
   prepareCurrentWlanResourceForV12,
@@ -32,6 +36,7 @@ const NETWORK_CONNECTORS = new Set([
 const HOST_RESOURCE_COLLECTIONS = ['storageSlots', 'expansionSlots', 'optionalModuleSlots', 'controllerSlots', 'bootDeviceSlots']
 
 function sanitizeForFingerprint(value, fingerprintVersion) {
+  if (fingerprintVersion === LAPTOP_FINGERPRINT_VERSION) return canonicalizeCatalogItemV13(value)
   if (fingerprintVersion === M2_AE_FINGERPRINT_VERSION) return canonicalizeCatalogItemV12(value)
   if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) return canonicalizeCatalogItemV11(value)
   if (fingerprintVersion === NAS_FINGERPRINT_VERSION) return canonicalizeCatalogItemV10(value)
@@ -40,6 +45,7 @@ function sanitizeForFingerprint(value, fingerprintVersion) {
 }
 
 function sanitizeCurrentForFingerprint(value, fingerprintVersion) {
+  if (fingerprintVersion === LAPTOP_FINGERPRINT_VERSION) return projectLocalLaptopForCatalog(value)
   if (fingerprintVersion === M2_AE_FINGERPRINT_VERSION) return canonicalizeCatalogItemV12UpdateCurrent(value)
   if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) return canonicalizeCatalogItemV9(value)
   if (fingerprintVersion !== NAS_FINGERPRINT_VERSION) return sanitizeForFingerprint(value, fingerprintVersion)
@@ -169,6 +175,13 @@ function mergeCatalogItem(currentValue, incomingValue, fingerprintVersion) {
     if (current[field] !== undefined) result[field] = structuredClone(current[field])
   }
   if (Array.isArray(incoming.ports)) result.ports = mergePorts(current.ports, incoming.ports)
+  if (fingerprintVersion === LAPTOP_FINGERPRINT_VERSION && Array.isArray(incoming.ports)) {
+    for (const port of result.ports) port.derivedFromHostPower = false
+    result.localCatalogEvidence = { ...current.localCatalogEvidence, ports: true }
+  }
+  if (fingerprintVersion === LAPTOP_FINGERPRINT_VERSION && Array.isArray(incoming.fixedComponents)) {
+    result.localCatalogEvidence = { ...result.localCatalogEvidence, fixedComponents: true }
+  }
   result = removeSupersededWlanResource(current, incoming, result)
   if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION || fingerprintVersion === M2_AE_FINGERPRINT_VERSION) {
     const incomingMinimum = incoming.specs?.hostInterface?.minimumElectricalLanes
@@ -190,11 +203,13 @@ function changeKind(current, next) {
   return 'changed'
 }
 
-function collectObjectChanges(current, next, path, impact, changes) {
-  if (semanticEqual(normalizeValue(current), normalizeValue(next))) return
+function collectObjectChanges(current, next, path, impact, changes, preserveEmpty = false) {
+  const left = normalizeValue(current)
+  const right = normalizeValue(next)
+  if (semanticEqual(preserveEmpty ? projectLaptopHashValue(left) : left, preserveEmpty ? projectLaptopHashValue(right) : right)) return
   if (plainObject(current) && plainObject(next)) {
     const keys = [...new Set([...Object.keys(current), ...Object.keys(next)])].sort()
-    for (const key of keys) collectObjectChanges(current[key], next[key], path ? `${path}.${key}` : key, impact, changes)
+    for (const key of keys) collectObjectChanges(current[key], next[key], path ? `${path}.${key}` : key, impact, changes, preserveEmpty)
     return
   }
   changes.push({ path, kind: changeKind(current, next), current, next, impact })
@@ -312,6 +327,7 @@ function planPorts(currentPorts = [], incomingPorts = []) {
 
 export function planCatalogUpdate(currentValue, incomingValue, versionInput) {
   const { sourceFingerprintVersion, runtimeCanonicalVersion } = catalogUpdateVersions(versionInput)
+  const preserveEmpty = runtimeCanonicalVersion === LAPTOP_FINGERPRINT_VERSION
   const comparableCurrent = runtimeCanonicalVersion === M2_AE_FINGERPRINT_VERSION
     ? prepareCurrentWlanResourceForV12(currentValue, incomingValue)
     : currentValue
@@ -339,7 +355,7 @@ export function planCatalogUpdate(currentValue, incomingValue, versionInput) {
   }
 
   for (const field of ['subtype', 'aliases', 'specs', 'fixedComponents']) {
-    collectObjectChanges(normalizedCurrent[field], normalizedNext[field], field, 'product-definition', changes)
+    collectObjectChanges(normalizedCurrent[field], normalizedNext[field], field, 'product-definition', changes, preserveEmpty)
   }
   if (resourceTransition.status === 'ready') {
     const operation = wlanResourceReclassification(resourceTransition)
@@ -356,9 +372,9 @@ export function planCatalogUpdate(currentValue, incomingValue, versionInput) {
       from: operation.from,
       to: operation.to,
     })
-    collectObjectChanges(comparison.current, comparison.next, 'compatibility', 'product-definition', changes)
+    collectObjectChanges(comparison.current, comparison.next, 'compatibility', 'product-definition', changes, preserveEmpty)
   } else {
-    collectObjectChanges(normalizedCurrent.compatibility, normalizedNext.compatibility, 'compatibility', 'product-definition', changes)
+    collectObjectChanges(normalizedCurrent.compatibility, normalizedNext.compatibility, 'compatibility', 'product-definition', changes, preserveEmpty)
   }
 
   const portPlan = planPorts(current.ports, next.ports)
@@ -367,7 +383,7 @@ export function planCatalogUpdate(currentValue, incomingValue, versionInput) {
   const known = new Set([...IDENTITY_FIELDS, 'name', 'subtype', 'aliases', 'specs', 'ports', 'compatibility', 'fixedComponents'])
   const remainingFields = [...new Set([...Object.keys(normalizedCurrent), ...Object.keys(normalizedNext)])]
   for (const field of remainingFields.filter((key) => !known.has(key)).sort()) {
-    collectObjectChanges(normalizedCurrent[field], normalizedNext[field], field, 'product-definition', changes)
+    collectObjectChanges(normalizedCurrent[field], normalizedNext[field], field, 'product-definition', changes, preserveEmpty)
   }
 
   return {

@@ -4,6 +4,7 @@ import {
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
+  LAPTOP_FINGERPRINT_VERSION,
   NETWORK_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
   RAM_FINGERPRINT_VERSION,
@@ -15,6 +16,7 @@ import {
   sha256Hex,
 } from '../../packages/catalog-protocol/src/index.ts'
 import { projectLocalItemForCatalog } from './local-catalog-mapping.mjs'
+import { projectLocalLaptopForCatalog } from './laptop-local-projection.mjs'
 import { matchOemVariant } from './oem-variant-matcher.mjs'
 
 const MAX_OUTBOX_RECORDS = 10_000
@@ -49,7 +51,9 @@ function legacyFingerprintVersionForItem(item) {
 }
 
 function fingerprintVersionForItem(item) {
-  return item?.type === 'network'
+  return item?.type === 'server' && item.hardwareClass === 'laptop'
+    ? LAPTOP_FINGERPRINT_VERSION
+    : item?.type === 'network'
     ? NETWORK_FINGERPRINT_VERSION
     : item?.type === 'nas'
     ? NAS_FINGERPRINT_VERSION
@@ -67,7 +71,9 @@ async function projectLocalInventoryItem(item, fingerprintVersion) {
       return projectedPort
     })
   }
-  const catalogItem = fingerprintVersion === NAS_FINGERPRINT_VERSION
+  const catalogItem = fingerprintVersion === LAPTOP_FINGERPRINT_VERSION
+    ? { ...projectLocalLaptopForCatalog(item), id: item.id }
+    : fingerprintVersion === NAS_FINGERPRINT_VERSION
     ? { ...canonicalizeCatalogItemV9(projectedItem), id: item.id }
     : projectedItem
   const projection = await projectCatalogItem(catalogItem, { fingerprintVersion })

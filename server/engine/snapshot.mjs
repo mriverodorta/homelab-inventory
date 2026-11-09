@@ -1,4 +1,4 @@
-import { nasPowerTopology } from '../../shared/power-ports.mjs'
+import { isLaptop, laptopPowerTopology, nasPowerTopology } from '../../shared/power-ports.mjs'
 
 function itemRef(project, runtimeKey, label) {
   const item = project.items[runtimeKey]
@@ -32,12 +32,12 @@ function topologyRoute(route) {
 export function createEngineTopology(project) {
   return {
       items: Object.values(project.items).map((item) => {
-        const power = item.type === 'nas' ? nasPowerTopology(item) : null
+        const power = item.type === 'nas' ? nasPowerTopology(item) : isLaptop(item) ? laptopPowerTopology(item) : null
         return {
           item: { item_type: item.type, id: item.id },
           archived: typeof item.archivedAt === 'string' && item.archivedAt.length > 0,
           power_configuration: power?.configuration
-            ?? (typeof item.specs?.powerConfiguration === 'string'
+            ?? (!isLaptop(item) && typeof item.specs?.powerConfiguration === 'string'
               ? item.specs.powerConfiguration
               : null),
           power_adapter_disposition: power?.adapterDisposition ?? null,

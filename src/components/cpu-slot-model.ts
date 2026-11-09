@@ -6,6 +6,7 @@ export function hostCpuSocketCount(host: InventoryItem | undefined): number {
   const hasFixedCpu = host?.fixedComponents?.some((component) => (
     component.componentType === 'cpu' || component.item.type === 'cpu'
   ))
+  if (host?.hardwareClass === 'laptop' && !hasFixedCpu) return host.compatibility?.host?.cpu?.sockets?.length ? 1 : 0
   return hasFixedCpu ? 0 : 1
 }
 

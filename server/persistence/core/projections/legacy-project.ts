@@ -44,7 +44,33 @@ const AUTHORITATIVE_HOST_RESOURCE_COLLECTIONS = [
   'coolingProfiles',
 ]
 
-function mergeCompatibilityProjection(base: unknown, relational: unknown) {
+// Empty support tables are unknown unless the imported evidence explicitly
+// recorded an empty collection. Apply only to the new laptop contract.
+function preserveLaptopEvidenceShape(source: Row | undefined, projected: Row): Row {
+  const result = structuredClone(projected)
+  for (const [key, value] of Object.entries(result)) {
+    const original = source?.[key]
+    if (value === undefined) delete result[key]
+    else if (Array.isArray(value)) {
+      if (value.length === 0 && original === undefined) delete result[key]
+      else result[key] = value.map((entry) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry
+        const base = Array.isArray(original)
+          ? original.find((candidate) => candidate?.id === entry.id)
+          : undefined
+        return preserveLaptopEvidenceShape(base, entry)
+      })
+    } else if (value && typeof value === 'object') result[key] = preserveLaptopEvidenceShape(original, value)
+  }
+  for (const [key, value] of Object.entries(source ?? {})) {
+    if (result[key] !== undefined) continue
+    if (Array.isArray(value) && value.length === 0) result[key] = []
+    else if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) result[key] = {}
+  }
+  return result
+}
+
+function mergeCompatibilityProjection(base: unknown, relational: unknown, laptop = false) {
   const merged = mergeRecords(base, relational)
   const relationalHost = relational && typeof relational === 'object' && !Array.isArray(relational)
     ? (relational as Row).host
@@ -57,7 +83,7 @@ function mergeCompatibilityProjection(base: unknown, relational: unknown) {
       delete merged.host[collection]
     }
   }
-  return merged
+  return laptop ? preserveLaptopEvidenceShape(base as Row | undefined, merged) : merged
 }
 
 function pointerSegments(path: string) {
@@ -148,14 +174,14 @@ function legacyPort(database: Database, row: Row, itemType: string): InventoryPo
     speed: speedLabel(row.speed_bps),
     poe: row.poe == null ? undefined : Boolean(row.poe),
     origin: row.origin,
+    derivedFromHostPower: row.derived_from_host_power === 1 ? true : undefined,
     endpoints: endpoints.length ? endpoints : undefined,
   }) as InventoryPort
 }
 
 function itemPorts(database: Database, itemId: number, itemType: string) {
   return all(database, `
-    SELECT ip.id AS port_id, pia.legacy_port_id, d.semantic_key, d.slot_number,
-           d.label, d.notes, d.ip_address, d.role, d.speed_bps, d.poe, d.origin,
+    SELECT d.*, ip.id AS port_id, pia.legacy_port_id,
            pk.key AS kind_key, ct.key AS connector_key
     FROM inventory_ports ip
     JOIN port_identity_aliases pia ON pia.port_id = ip.id
@@ -461,7 +487,7 @@ function hostCompatibility(database: Database, itemId: number) {
   if (powerConnectors.length) host.powerConnectors = powerConnectors.map((entry, index) => ({ id: index + 1, key: entry.semantic_key, label: entry.label, kind: entry.kind, connector: entry.connector, count: entry.count, required: Boolean(entry.required) }))
   const constraints = all(database, 'SELECT * FROM compatibility_constraint_groups WHERE host_profile_id = ? ORDER BY id', profile.id)
   if (constraints.length) host.constraintGroups = constraints.map((constraint, index) => ({
-    id: index + 1,
+    id: constraint.catalog_resource_id ?? index + 1,
     key: constraint.semantic_key,
     label: constraint.label,
     kind: constraint.kind,
@@ -487,6 +513,7 @@ function inventoryItem(database: Database, row: Row): InventoryItem {
   const compatibility = mergeCompatibilityProjection(
     mergeRecords(mergeRecords(legacyCompatibility, subtype.compatibility), relationalExtension?.compatibility),
     hostCompatibility(database, row.id),
+    subtype.fields?.hardwareClass === 'laptop',
   )
   const portExtensions = relationalExtension?.ports && typeof relationalExtension.ports === 'object'
     ? relationalExtension.ports as Row
@@ -528,8 +555,8 @@ function inventoryItem(database: Database, row: Row): InventoryItem {
     aliases: aliases.length ? aliases : undefined,
     specs: extension.legacySpecs ?? mergeRecords(subtype.specs, relationalExtension?.specs),
     properties: Object.keys(properties).length ? properties : undefined,
-    ports: ports.length ? ports : undefined,
-    fixedComponents: fixedComponents.length ? fixedComponents : undefined,
+    ports: ports.length || extension.legacyFields?.localCatalogEvidence?.ports ? ports : undefined,
+    fixedComponents: fixedComponents.length || extension.legacyFields?.localCatalogEvidence?.fixedComponents ? fixedComponents : undefined,
     smart,
     compatibility,
     notes: row.notes,

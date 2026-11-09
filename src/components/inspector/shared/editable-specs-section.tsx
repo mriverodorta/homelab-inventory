@@ -59,7 +59,7 @@ export function EditableSpecsSection({
             <Input
               aria-label="Display name"
               value={editor.values.properties?.displayName ?? ''}
-              placeholder="Server name"
+              placeholder="Computer name"
               onChange={(event) => editor.updateValues({
                 properties: {
                   ...editor.values.properties,

@@ -30,6 +30,14 @@ afterEach(async () => {
 })
 
 describe('atomic inventory commands', () => {
+  it('creates and reloads laptop hardware with an independent server role', async () => {
+    const { store, dataDir } = await createStore()
+    store.createInventoryItems({ type: 'server', name: 'Example laptop', hardwareClass: 'laptop', usageRole: 'server', specs: { formFactor: 'Laptop' } })
+    await store.flush()
+    const { store: reopened } = await createStore(dataDir)
+    expect(reopened.databases.inventory.data.servers[0]).toMatchObject({ hardwareClass: 'laptop', usageRole: 'server', specs: { formFactor: 'Laptop' } })
+  })
+
   it('creates sequential quantities and preserves equipment/component naming rules', async () => {
     const { store } = await createStore()
     let project = store.createInventoryItems({ type: 'switch', name: 'Edge Switch' }, 2)

@@ -1,4 +1,4 @@
-import { Database, MonitorCog, Server, type LucideProps } from 'lucide-react'
+import { Database, Laptop, MonitorCog, Server, type LucideProps } from 'lucide-react'
 import type { InventoryItem } from '@/types/inventory'
 import { resolveComputeHostPresentation, type ComputeHostIconKey } from '@/lib/compute-host-presentation'
 
@@ -6,6 +6,7 @@ const HOST_ICONS = {
   server: Server,
   'monitor-cog': MonitorCog,
   database: Database,
+  laptop: Laptop,
 } satisfies Record<ComputeHostIconKey, typeof Server>
 
 type ComputeHostIconProps = LucideProps & {

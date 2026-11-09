@@ -146,7 +146,13 @@ export async function applyCommittedMigrations(
       const startedAtMs = Date.now()
       // Bun may mask a final statement's constraint error with trailing whitespace.
       // Hash the original bytes, but execute without the empty trailing statement.
-      database.exec(migration.sql.trim())
+      if (migration.sql.startsWith('-- homelab:statement-breakpoints')) {
+        // Opt-in ordered statements keep intermediate constraint failures visible
+        // in Bun while retaining one atomic transaction for the entire migration.
+        for (const statement of migration.sql.split('--> statement-breakpoint')) {
+          if (statement.trim()) database.exec(statement.trim())
+        }
+      } else database.exec(migration.sql.trim())
       migration.verify?.(database)
       const violations = foreignKeyViolations(database)
       if (violations.length > 0) {

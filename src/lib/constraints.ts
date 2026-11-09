@@ -4,7 +4,7 @@ import type { ProjectCompatibilityResult } from '@/lib/compatibility'
 import { nextNumericId } from '@/lib/ids'
 import { isArchivedItem, touchProject } from '@/lib/project'
 import { hostCpuSocketCount } from '@/components/cpu-slot-model'
-import { nasPowerTopology } from '../../shared/power-ports.mjs'
+import { isLaptop, laptopPowerTopology, nasPowerTopology } from '../../shared/power-ports.mjs'
 import {
   allocatePcBuildAssignment,
   canRemovePcBuildAssignment,
@@ -259,6 +259,16 @@ function validateAssignmentBasics(
     return { ok: false, message: NAS_COMPONENT_MESSAGE }
   }
 
+  if (isLaptop(host) && item.type === 'powerAdapter') {
+    const power = laptopPowerTopology(host)
+    if (power.configuration !== 'external-adapter' || power.adapterDisposition !== 'replaceable') {
+      return { ok: false, message: 'This laptop does not declare a replaceable external power adapter.' }
+    }
+    if (project.assignments.some((assignment) => assignment.serverId === serverId && assignment.type === 'powerAdapter')) {
+      return { ok: false, message: 'This laptop already has a power adapter.' }
+    }
+  }
+
   if (host.type === 'nas' && item.type === 'powerAdapter') {
     const power = nasPowerTopology(host)
     if (power.configuration !== 'external-adapter') {
@@ -475,6 +485,17 @@ export function getVisibleServerSlotTypes(
       .filter((assignment) => assignment.serverId === serverId)
       .map((assignment) => assignment.type),
   )
+
+  const host = project.items[serverId]
+  if (isLaptop(host)) {
+    const capabilities = host?.compatibility?.host
+    const power = laptopPowerTopology(host)
+    return COMPONENT_ORDER.filter((type) => assignedTypes.has(type)
+      || (type === 'cpu' && hostCpuSocketCount(host) > 0)
+      || (type === 'ram' && Number(capabilities?.memory?.slots) > 0)
+      || (type === 'storage' && (capabilities?.storageSlots ?? []).some((slot) => slot.count > 0))
+      || (type === 'powerAdapter' && power.configuration === 'external-adapter' && power.adapterDisposition === 'replaceable'))
+  }
 
   return COMPONENT_ORDER.filter(
     (type) => REQUIRED_SERVER_SLOT_TYPES.includes(type) || assignedTypes.has(type),

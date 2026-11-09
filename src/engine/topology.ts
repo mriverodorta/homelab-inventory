@@ -51,6 +51,7 @@ export type RuntimePowerEndpoint = {
     | 'power-strip-input'
     | 'monitor-input'
     | 'nas-internal-input'
+    | 'computer-internal-input'
     | 'pc-power-supply-input'
     | 'oem-power-adapter-input'
   label: string

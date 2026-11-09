@@ -2,7 +2,7 @@ import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
 import { InventoryLifecycleError } from './inventory-lifecycle.mjs'
 import { isRelationalId } from './relational-ids.mjs'
 
-const SERVER_HARDWARE_CLASSES = new Set(['desktop', 'workstation', 'server'])
+const SERVER_HARDWARE_CLASSES = new Set(['desktop', 'workstation', 'server', 'laptop'])
 const SERVER_USAGE_ROLES = new Set(['server', 'desktop', 'workstation', 'other'])
 const FIXED_COMPONENT_DISPOSITIONS = new Set(['fixed', 'soldered'])
 
@@ -142,6 +142,7 @@ function normalizeInventoryPort(port, index, fallbackKind) {
   }
   if (typeof port.poe === 'boolean') normalized.poe = port.poe
   if (port.origin === 'fixed' || port.origin === 'module') normalized.origin = port.origin
+  if (port.derivedFromHostPower === true && port.type === 'ac-input') normalized.derivedFromHostPower = true
   if (Array.isArray(port.endpoints)) {
     normalized.endpoints = port.endpoints.map((endpoint, endpointIndex) => {
       if (!endpoint || typeof endpoint !== 'object' || Array.isArray(endpoint)) {
@@ -239,7 +240,7 @@ export function normalizeInventoryItemInput(input, id) {
     const hardwareClass = String(input.hardwareClass ?? 'desktop').trim()
     const usageRole = String(input.usageRole ?? 'server').trim()
     if (!SERVER_HARDWARE_CLASSES.has(hardwareClass)) {
-      throw new InventoryLifecycleError('Server hardware class must be desktop, workstation, or server.', {
+      throw new InventoryLifecycleError('Hardware class must be desktop, laptop, workstation, or server.', {
         code: 'invalid-inventory-item', status: 400,
       })
     }
@@ -277,6 +278,13 @@ export function normalizeInventoryItemInput(input, id) {
   }
   const fixedComponents = normalizeFixedComponents(input.fixedComponents)
   if (fixedComponents?.length) item.fixedComponents = fixedComponents
+  if (type === 'server' && item.hardwareClass === 'laptop') {
+    item.localCatalogEvidence = {
+      ports: typeof input.localCatalogEvidence?.ports === 'boolean' ? input.localCatalogEvidence.ports : Array.isArray(input.ports),
+      fixedComponents: typeof input.localCatalogEvidence?.fixedComponents === 'boolean' ? input.localCatalogEvidence.fixedComponents : Array.isArray(input.fixedComponents),
+    }
+    if (!fixedComponents?.length && item.localCatalogEvidence.fixedComponents) item.fixedComponents = []
+  }
   if (type === 'nas') {
     const catalogPowerConfiguration = item.compatibility?.host?.power?.configuration
     if (catalogPowerConfiguration === 'internal-psu' || catalogPowerConfiguration === 'external-adapter') {

@@ -369,5 +369,5 @@ export function formatInventoryCompactSpec(item: InventoryItem): string | null {
     return compactParts(specText(item, 'formFactor'), specText(item, 'operatingSystem')) ?? 'Custom build'
   }
 
-  return compactParts(specText(item, 'formFactor')) ?? 'Server'
+  return compactParts(specText(item, 'formFactor')) ?? 'Computer'
 }

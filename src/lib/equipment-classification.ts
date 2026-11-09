@@ -1,6 +1,6 @@
 import type { EquipmentUsageRole, HardwareClass, InventoryItem } from '@/types/inventory'
 
-export const HARDWARE_CLASSES: readonly HardwareClass[] = ['desktop', 'workstation', 'server']
+export const HARDWARE_CLASSES: readonly HardwareClass[] = ['desktop', 'workstation', 'server', 'laptop']
 export const EQUIPMENT_USAGE_ROLES: readonly EquipmentUsageRole[] = ['server', 'desktop', 'workstation', 'other']
 
 export function normalizeHardwareClass(value: unknown): HardwareClass {
@@ -22,9 +22,10 @@ export function equipmentUsageRoleLabel(value: unknown): string {
 
 export function hardwareClassLabel(value: unknown): string {
   const hardwareClass = normalizeHardwareClass(value)
+  if (hardwareClass === 'laptop') return 'Laptop'
   if (hardwareClass === 'workstation') return 'Workstation'
   if (hardwareClass === 'server') return 'Server'
-  return 'Desktop'
+  return 'Desktop PC'
 }
 
 export function catalogTypeForLocalItem(item: Pick<InventoryItem, 'type' | 'hardwareClass'>): string {

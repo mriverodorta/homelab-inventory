@@ -854,7 +854,7 @@ function assertInventoryItem(itemId, item, expectedType, options = {}) {
   }
 
   if (!options.allowLegacyIds && type === 'server') {
-    if (!new Set(['desktop', 'workstation', 'server']).has(item.hardwareClass)) {
+    if (!new Set(['desktop', 'workstation', 'server', 'laptop']).has(item.hardwareClass)) {
       throw new Error(`Inventory item ${itemId} must declare a valid hardware class.`)
     }
     if (!new Set(['server', 'desktop', 'workstation', 'other']).has(item.usageRole)) {

@@ -190,4 +190,14 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0037_pc_build_resource_providers.sql',
     sha256: '1b226813e15fea1ba7244c3eb75fa7f3a9133e8a447b84477ba16c7f49583627',
   },
+  {
+    id: '0038_laptop_hardware_class',
+    file: '0038_laptop_hardware_class.sql',
+    sha256: '682cf2048517ad12c176cbdfa70e6e8d6263318c3a297a508002900dd8a0e869',
+  },
+  {
+    id: '0039_scoped_laptop_resources',
+    file: '0039_scoped_laptop_resources.sql',
+    sha256: '955972b7f278c8d530b0dd6632ded2f8994a75f8deaebefd8331ff5b24c3067f',
+  },
 ]

@@ -101,7 +101,7 @@ function getItemStatus(project: ProjectState, item: InventoryItem): string {
 
 function getItemSubtitle(item: InventoryItem): string {
   if (item.type === 'server') {
-    return item.properties?.displayName?.trim() || item.model || item.subtype || 'Server'
+    return item.properties?.displayName?.trim() || item.model || item.subtype || 'Computer'
   }
 
   return [item.manufacturer, item.family, item.model, item.number, item.subtype]

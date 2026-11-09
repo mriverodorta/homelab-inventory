@@ -38,6 +38,12 @@ function state(item, overrides = {}) {
 }
 
 describe('inventory lifecycle helpers', () => {
+  it('preserves laptop classification when duplicating a host', () => {
+    expect(buildDuplicateRecord({ type: 'server', nextId: 2, existingRecords: [], source: {
+      id: 1, name: 'Example laptop', hardwareClass: 'laptop', usageRole: 'server', specs: { formFactor: 'Laptop' },
+    } })).toMatchObject({ id: 2, hardwareClass: 'laptop', usageRole: 'server', specs: { formFactor: 'Laptop' } })
+  })
+
   it('resolves numeric inventory references by category', () => {
     const inventory = emptyInventory()
     inventory.cpus.push({ id: 7, name: 'CPU' })

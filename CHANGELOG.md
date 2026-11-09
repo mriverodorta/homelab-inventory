@@ -8,7 +8,17 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ### Added
 
+- Add shared Catalog Protocol 0.2.0 with dedicated laptop fingerprint v13, fixed hardware and explicit power semantics, empty-evidence preservation, and synthetic conformance vectors. All historical fingerprint identities remain unchanged.
 - Shared viewer packages display Computer, Desktop PC, Laptop, Workstation and Server from validated custom or exact historical Registry evidence without changing immutable share payloads, IDs or hashes; NAS and PC Build retain their labels.
+- Add Laptop as a physical hardware class, independent of the host's usage role, with a Laptop icon and chassis option. Mini, Micro and Tiny remain form factors; DIMM and SO-DIMM remain separate RAM form factors.
+- Upgrade SQLite safely to retain laptop classification across edits, duplication and restart without reclassifying existing inventory. Catalog v13 laptops map to the existing numeric compute inventory category, including fixed components and explicit replaceable slots.
+- Present the shared compute inventory category as Computer, with Laptop, Desktop PC, Workstation or Server labels on individual hosts. Preserve existing category keys, saved filters, agent registrations and relationships; physical class remains independent of usage role.
+
+### Fixed
+
+- Preserve collection-scoped laptop resource keys, numeric slot identities and assignments through catalog import and edits. Keep unknown and explicitly empty topology evidence distinct; count fixed RAM toward total capacity without consuming replaceable slots.
+- Execute the new resource migration's marked SQL statements individually within one transaction so an intermediate constraint failure cannot be hidden by a later successful statement.
+- Preserve the browser Host header through the isolated local preview proxy so same-origin edits work without weakening cross-origin mutation protection.
 
 ## [0.16.22] - 2026-11-04
 

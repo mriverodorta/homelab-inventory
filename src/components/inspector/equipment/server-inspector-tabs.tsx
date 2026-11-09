@@ -17,6 +17,7 @@ import { ServerNetworkTab } from '@/components/inspector/network/server-network-
 import { EditableSpecsSection } from '@/components/inspector/shared/editable-specs-section'
 import { updateEditorPorts } from '@/components/inspector/shared/inventory-editor-ports'
 import { itemFromEditorValues } from '@/components/inspector/shared/item-editor-adapters'
+import { itemPresentationLabel } from '@/components/inspector/shared/item-formatters'
 import { EquipmentSlotsTab } from '@/components/inspector/slots/equipment-slots-tab'
 import { InspectorTabs } from '@/components/inspector/inspector-tabs'
 import { PortGroupsEditor } from '@/components/inventory-form/port-groups-editor'
@@ -109,7 +110,7 @@ export function ServerInspectorTabs({
           label: 'Specs',
           content: (
             <EditableSpecsSection
-              title="Server Details"
+              title={`${itemPresentationLabel(draftServer)} Details`}
               editor={editor}
               auditWarnings={auditWarnings}
               displayName
@@ -124,7 +125,7 @@ export function ServerInspectorTabs({
             <EquipmentSlotsTab
               project={project}
               host={draftServer}
-              title="Server Slots"
+              title={`${itemPresentationLabel(draftServer)} Slots`}
             />
           ),
         },

@@ -13,7 +13,7 @@ export const servers = sqliteTable('servers', {
   wireless: text('wireless'),
 }, (table) => [
   index('servers_chassis_type_index').on(table.chassisTypeId),
-  check('servers_hardware_class_check', sql`${table.hardwareClass} IN ('desktop', 'workstation', 'server')`),
+  check('servers_hardware_class_check', sql`${table.hardwareClass} IN ('desktop', 'workstation', 'server', 'laptop')`),
   check('servers_usage_role_check', sql`${table.usageRole} IN ('server', 'desktop', 'workstation', 'other')`),
 ])
 

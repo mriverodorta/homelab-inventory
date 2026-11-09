@@ -69,11 +69,18 @@ function allocate(records: LegacyRecord[], keyOf: (record: LegacyRecord) => stri
   return result
 }
 
-export function legacyResourceDefinitions(item: LegacyRecord, type = item.type ?? item.__type): Array<{ key: string, count: number }> {
+export function resourcePlanKey(item: LegacyRecord | undefined, resourceType: string, key: string): string {
+  return item?.hardwareClass === 'laptop' && ['storage', 'expansion', 'optionalModule', 'controllerSlot', 'bootDeviceSlot', 'coolingProfile'].includes(resourceType)
+    ? `@v13:${resourceType}:${key}`
+    : key
+}
+
+export function legacyResourceDefinitions(item: LegacyRecord, type = item.type ?? item.__type): Array<{ key: string, count: number, semanticKey?: string }> {
   const host = (item.compatibility as any)?.host ?? {}
-  const definitions: Array<{ key: string, count: number }> = []
+  const definitions: Array<{ key: string, count: number, semanticKey?: string }> = []
+  const implicitCpuCount = item.hardwareClass === 'laptop' ? (host.cpu?.sockets?.length ? 1 : 0) : (host.cpu ? 1 : 0)
   const scalar = [
-    ['cpu', host.cpu?.socketCount ?? host.cpu?.socketsCount ?? (host.cpu ? 1 : 0)],
+    ['cpu', host.cpu?.socketCount ?? host.cpu?.socketsCount ?? implicitCpuCount],
     ['memory', host.memory?.slots ?? 0],
     ['power-adapter', host.powerAdapterSlots ?? 0],
     ['psu', host.power?.psuBays ?? host.power?.bayCount ?? host.power?.psuBayCount ?? 0],
@@ -89,20 +96,21 @@ export function legacyResourceDefinitions(item: LegacyRecord, type = item.type ?
     if (cpu) definitions.push({ key: 'cpu-cooling', count: cpu.count })
   }
   const collections = [
-    ['storage', host.storageSlots],
-    ['expansion', host.expansionSlots],
-    ['optional', host.optionalModuleSlots],
-    ['controller', host.controllerSlots],
-    ['boot', host.bootDeviceSlots],
-    ['cooling', host.coolingProfiles],
-    ['power-connector', host.powerConnectors],
+    ['storage', host.storageSlots, 'storage'],
+    ['expansion', host.expansionSlots, 'expansion'],
+    ['optional', host.optionalModuleSlots, 'optionalModule'],
+    ['controller', host.controllerSlots, 'controllerSlot'],
+    ['boot', host.bootDeviceSlots, 'bootDeviceSlot'],
+    ['cooling', host.coolingProfiles, 'coolingProfile'],
+    ['power-connector', host.powerConnectors, 'power'],
   ] as const
-  for (const [prefix, value] of collections) {
+  for (const [prefix, value, resourceType] of collections) {
     if (!Array.isArray(value)) continue
     value.forEach((entry, index) => {
       const key = typeof entry?.key === 'string' && entry.key ? entry.key : `${prefix}-${index + 1}`
       const count = Number.isSafeInteger(entry?.count) && entry.count > 0 ? entry.count : 1
-      definitions.push({ key, count })
+      const planKey = resourcePlanKey(item, resourceType, key)
+      definitions.push({ key: planKey, count, ...(planKey === key ? {} : { semanticKey: key }) })
     })
   }
   return definitions

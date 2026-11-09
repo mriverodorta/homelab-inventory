@@ -89,6 +89,27 @@ describe('local release staging', () => {
     }
   })
 
+  test('ingress preserves browser origin and host for same-origin mutation checks', async () => {
+    let handler
+    let forwarded
+    new Function('Bun', 'fetch', stagingIngressRunCommand(candidate).at(-1))(
+      { serve(options) { handler = options.fetch } },
+      async (url, options) => {
+        forwarded = { url: String(url), headers: options.headers }
+        return new Response('{}')
+      },
+    )
+    await handler(new Request('http://127.0.0.1:8799/api/inventory', {
+      method: 'POST',
+      headers: { origin: 'http://127.0.0.1:8799', 'sec-fetch-site': 'same-origin' },
+      body: '{}',
+    }))
+    expect(forwarded.url).toBe('http://homelab-inventory-staging:8798/api/inventory')
+    expect(forwarded.headers.get('host')).toBe('127.0.0.1:8799')
+    expect(forwarded.headers.get('origin')).toBe('http://127.0.0.1:8799')
+    expect(forwarded.headers.get('sec-fetch-site')).toBe('same-origin')
+  })
+
   test('binds approval to source, snapshot, image, and post-start data', () => {
     const identity = {
       revision: candidate.revision,

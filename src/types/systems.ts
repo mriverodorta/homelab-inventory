@@ -36,7 +36,7 @@ export type SystemsHostRow = SystemsHostLive & Readonly<{
   name: string
   manufacturer: string | null
   model: string | null
-  hardwareClass: 'desktop' | 'workstation' | 'server' | null
+  hardwareClass: 'desktop' | 'workstation' | 'server' | 'laptop' | null
   usageRole: 'server' | 'desktop' | 'workstation' | 'other' | null
   cpuLabel: string | null
   memoryLabel: string | null

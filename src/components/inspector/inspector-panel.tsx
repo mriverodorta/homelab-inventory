@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import { runtimeItemKey } from '@/lib/item-keys'
 import type { InspectorPanelProps } from '@/components/inspector/inspector-contract'
 import { StatusBadge } from '@/components/inspector/inspector-status'
-import { itemTypeLabel } from '@/components/inspector/shared/item-formatters'
+import { itemPresentationLabel } from '@/components/inspector/shared/item-formatters'
 import { InspectorTopologyContext } from '@/components/inspector/inspector-topology-context'
 import { InspectorInventoryMetadataContext } from '@/components/inspector/inspector-inventory-metadata-context'
 import { ConnectionDetails } from '@/components/inspector/connections/connection-editor'
@@ -162,7 +162,7 @@ export function InspectorPanel({
     : selectedItem ? selectedItem.name : 'Inspector'
   const drawerType = selectedConnection
     ? 'Connection'
-    : selectedItem ? itemTypeLabel(selectedItem.type) : null
+    : selectedItem ? itemPresentationLabel(selectedItem) : null
 
   return (
     <aside

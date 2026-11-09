@@ -2,6 +2,7 @@ import {
   canonicalCpuGenerationTokens,
   inferCpuProductGenerationTokens,
 } from './cpu-generation-aliases.mjs'
+import { isLaptop, laptopPowerTopology } from '../power-ports.mjs'
 import {
   moduleKeyFitsSocket,
   usbGenerationAtLeastV12,
@@ -263,6 +264,7 @@ export function normalizeHostCapabilities(item) {
       .filter(Boolean)
   }
   normalizeNumericField(normalized.cpu, 'maxTdpWatts')
+  if (optionalNumber(normalized.cpu?.maxTdpMw) !== undefined) normalized.cpu.maxTdpWatts = normalized.cpu.maxTdpMw / 1000
   normalizeNumericField(normalized.cpu, 'socketCount')
   if (Array.isArray(normalized.cpu?.populationModes)) {
     normalized.cpu.populationModes = normalized.cpu.populationModes
@@ -282,6 +284,8 @@ export function normalizeHostCapabilities(item) {
   ]) {
     normalizeNumericField(normalized.memory, field)
   }
+  if (optionalNumber(normalized.memory?.maxCapacityMib) !== undefined) normalized.memory.maxCapacityGb = normalized.memory.maxCapacityMib / 1024
+  if (optionalNumber(normalized.memory?.maxModuleCapacityMib) !== undefined) normalized.memory.maxModuleCapacityGb = normalized.memory.maxModuleCapacityMib / 1024
   for (const group of Array.isArray(normalized.storageSlots) ? normalized.storageSlots : []) {
     for (const field of ['id', 'count', 'pcieGeneration']) {
       normalizeNumericField(group, field)
@@ -388,7 +392,8 @@ export function normalizeComponentRequirements(item) {
     const normalized = { type: 'cpu' }
     const socket = normalizeCpuSocket(structured.socket)
     const generation = optionalString(structured.generation)
-    const tdpWatts = optionalNumber(structured.tdpWatts)
+    const tdpMw = optionalNumber(structured.tdpMw)
+    const tdpWatts = tdpMw === undefined ? optionalNumber(structured.tdpWatts) : tdpMw / 1000
     if (socket !== undefined) normalized.socket = socket
     if (generation !== undefined) normalized.generation = generation
     if (tdpWatts !== undefined) normalized.tdpWatts = tdpWatts
@@ -397,7 +402,8 @@ export function normalizeComponentRequirements(item) {
 
   if (item?.type === 'ram') {
     const structured = item.compatibility?.requirements?.memory ?? {}
-    const capacityGb = optionalNumber(structured.capacityGb ?? specs.capacityGb)
+    const capacityMib = optionalNumber(structured.capacityMib ?? specs.capacityMib)
+    const capacityGb = capacityMib === undefined ? optionalNumber(structured.capacityGb ?? specs.capacityGb) : capacityMib / 1024
 
     return {
       type: 'ram',
@@ -916,7 +922,7 @@ function evaluateCpu(hostCapabilities, requirements, assignments, items, compone
   const socketCount = support?.socketCount
   const cpuCount = assignedComponents(assignments, items, component)
     .filter((item) => item.type === 'cpu').length
-  if (Number.isSafeInteger(socketCount) && socketCount > 0 && cpuCount > socketCount) {
+  if (Number.isSafeInteger(socketCount) && socketCount >= 0 && cpuCount > socketCount) {
     addFinding(findings, {
       code: 'cpu.sockets.exceeded',
       severity: 'error',
@@ -946,16 +952,7 @@ function fixedMemoryRequirements(host) {
       || component?.componentType === 'memory'
       || component?.item?.type === 'ram'
     ))
-    .map((component) => {
-      const item = component.item ?? {}
-      const capacityMib = optionalNumber(item.specs?.capacityMib)
-      return {
-        ...normalizeComponentRequirements(item),
-        capacityGb: capacityMib === undefined
-          ? optionalNumber(item.specs?.capacityGb)
-          : capacityMib / 1024,
-      }
-    })
+    .map((component) => normalizeComponentRequirements(component.item ?? {}))
 }
 
 function effectiveMemorySupport(support, useVerifiedMemoryLimits) {
@@ -1632,6 +1629,24 @@ export function evaluateAssignmentCompatibility({
   const hostCapabilities = normalizeHostCapabilities(narrowedHost)
   const requirements = normalizeComponentRequirements(component)
   const optionalGroups = optionalModuleGroupsFor(hostCapabilities, component)
+
+  if (isLaptop(host) && component.type === 'powerAdapter') {
+    const power = laptopPowerTopology(host)
+    if (power.configuration !== 'external-adapter' || power.adapterDisposition !== 'replaceable') {
+      addFinding(findings, {
+        code: 'power.adapter.not-replaceable', severity: 'error',
+        message: 'This laptop does not declare a replaceable external power adapter.',
+        field: 'host.power.adapterDisposition',
+      })
+    }
+  }
+  if (component.type === 'cpu' && host?.fixedComponents?.some((fixed) => fixed.componentType === 'cpu')
+    && !(hostCapabilities.cpu?.socketCount > 0) && !hostCapabilities.cpu?.sockets?.length) {
+    addFinding(findings, {
+      code: 'cpu.fixed.not-replaceable', severity: 'error',
+      message: 'This host has a fixed processor and no replaceable CPU socket.', field: 'host.cpu.socketCount',
+    })
+  }
 
   if (requirements.type === 'cpu') {
     evaluateCpu(hostCapabilities, requirements, assignments, items, component, findings)

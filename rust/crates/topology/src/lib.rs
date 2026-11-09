@@ -1007,7 +1007,10 @@ fn power_endpoint(
             "nas" if owner.power_configuration.as_deref() == Some("internal-psu") => {
                 Some("nas-internal-input")
             }
-            "nas"
+            "server" if owner.power_configuration.as_deref() == Some("internal-psu") => {
+                Some("computer-internal-input")
+            }
+            "nas" | "server"
                 if owner.power_configuration.as_deref() == Some("external-adapter")
                     && owner.power_adapter_disposition.as_deref() == Some("fixed") =>
             {

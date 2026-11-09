@@ -865,9 +865,9 @@ const RELEASE_0_16_22_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: ['Shared viewer packages now use the same physical computer labels across systems, canvas, inspectors and previews while preserving existing share identities.'],
-  fixes: [],
-  notes: [],
+  highlights: ['Organize hosts under Computer and identify each by its physical class, including Laptop, independently of how it is used.', 'Import catalog v13 laptops with fixed hardware, replaceable slots and explicit power topology.', 'Shared viewer packages now use the same physical computer labels across systems, canvas, inspectors and previews while preserving existing share identities.'],
+  fixes: ['Preserve laptop resource and slot IDs across imports and edits, including matching keys in different resource collections. Count fixed memory toward total capacity without consuming replaceable slots.'],
+  notes: ['Existing inventory and canvas relationships are preserved by the automatic database upgrade. Mini/Micro chassis and DIMM/SO-DIMM memory remain separate choices. Catalog publication requires coordinated Registry and viewer readiness.'],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

@@ -1,4 +1,5 @@
 import type { InventoryItem } from '@/types/inventory'
+import { HARDWARE_CLASSES, hardwareClassLabel } from '@/lib/equipment-classification'
 
 const itemTypeLabels: Partial<Record<InventoryItem['type'], string>> = {
   cpu: 'CPU',
@@ -15,7 +16,7 @@ const itemTypeLabels: Partial<Record<InventoryItem['type'], string>> = {
   powerStrip: 'Power Strip',
   powerSupply: 'Power Supply',
   ram: 'RAM',
-  server: 'Server',
+  server: 'Computer',
   soundCard: 'Sound Card',
   storage: 'Storage',
   switch: 'Switch',
@@ -24,6 +25,12 @@ const itemTypeLabels: Partial<Record<InventoryItem['type'], string>> = {
 
 export function itemTypeLabel(type: InventoryItem['type']): string {
   return itemTypeLabels[type] ?? type
+}
+
+export function itemPresentationLabel(item: Pick<InventoryItem, 'type' | 'hardwareClass'>): string {
+  return item.type === 'server' && item.hardwareClass && HARDWARE_CLASSES.includes(item.hardwareClass)
+    ? hardwareClassLabel(item.hardwareClass)
+    : itemTypeLabel(item.type)
 }
 
 export function formatBytes(value: unknown): string {

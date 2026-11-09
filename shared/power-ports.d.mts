@@ -1,5 +1,12 @@
 import type { InventoryItem, InventoryPort } from '../src/types/inventory'
 
+export function isLaptop(item: InventoryItem | undefined): boolean
+export function laptopPowerTopology(item: InventoryItem): {
+  configuration?: 'internal-psu' | 'external-adapter'
+  adapterDisposition?: 'fixed' | 'replaceable'
+}
+export function laptopOwnsPowerEndpoint(item: InventoryItem): boolean
+
 export const NAS_POWER_CONFIGURATIONS: readonly ['internal-psu', 'external-adapter']
 export function isNasPowerConfiguration(value: unknown): value is 'internal-psu' | 'external-adapter'
 export function nasPowerTopology(item: InventoryItem): {

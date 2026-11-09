@@ -123,14 +123,14 @@ export type CatalogVariantEvidence = {
 }
 
 export type CatalogIdentityAlias = {
-  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
+  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13
   identityHash: string
 }
 
 export type CatalogSearchItem = {
   templateKey: string
   revision: number
-  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
+  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13
   identityHash: string
   identityAliases: CatalogIdentityAlias[]
   contentHash: string
@@ -206,7 +206,7 @@ export type CatalogVariantCandidate = {
   templateKey: string
   revision: number
   contentHash: string
-  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
+  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13
   label: string
   structuralSummary?: string
 }

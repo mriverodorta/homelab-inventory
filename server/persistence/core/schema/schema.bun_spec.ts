@@ -62,8 +62,8 @@ describe('core SQLite foundation schema', () => {
       'sharingAccountOperations',
       'sharingEventLifecycle',
     ]))
-    expect(CORE_MIGRATIONS).toHaveLength(37)
-    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0037_pc_build_resource_providers')
+    expect(CORE_MIGRATIONS).toHaveLength(39)
+    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0039_scoped_laptop_resources')
   })
 
   test('maps every active inventory category to a shared-primary-key subtype table', () => {

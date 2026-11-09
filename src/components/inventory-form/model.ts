@@ -676,7 +676,7 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
   return {
     ...values,
     hardwareClass:
-      item.hardwareClass === 'server' || item.hardwareClass === 'workstation'
+      item.hardwareClass === 'server' || item.hardwareClass === 'workstation' || item.hardwareClass === 'laptop'
         ? item.hardwareClass
         : 'desktop',
     usageRole: ['server', 'desktop', 'workstation', 'other'].includes(item.usageRole ?? '')

@@ -13,6 +13,7 @@ import {
   type ComponentDragData,
 } from '@/components/workbench-canvas-contract'
 import type { ComponentAssignment, InventoryItem, ProjectState } from '@/types/inventory'
+import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
 
 vi.mock('@dnd-kit/core', () => ({
   useDraggable: () => ({
@@ -435,6 +436,21 @@ describe('host card compatibility drop-state styling', () => {
     expect(row).toHaveTextContent('AC')
     expect(row).toHaveTextContent('01')
     expect(container.querySelector(`[data-testid="handle-${handleId}"]`)).toBeInTheDocument()
+  })
+
+  it('renders locked laptop hardware and one header AC endpoint without phantom replaceable slots', () => {
+    const laptop = withCanonicalPowerPorts({
+      ...host('server:1'), hardwareClass: 'laptop',
+      compatibility: { host: { memory: { slots: 0 }, power: { configuration: 'external-adapter', adapterDisposition: 'fixed' } } },
+      fixedComponents: [{ id: 3, componentType: 'cpu', disposition: 'soldered', label: 'Processor', item: { type: 'cpu', name: 'Synthetic soldered CPU' } }],
+    } as InventoryItem)
+    const { container } = render(<ServerNode {...serverNodeProps(nodeData(project([laptop]), laptop.key!))} />)
+    const fixed = container.querySelector('[data-fixed-component-id="3"]')
+    expect(fixed).toHaveTextContent('Synthetic soldered CPU')
+    expect(fixed?.querySelector('button')).toBeNull()
+    expect(fixed?.querySelector('[aria-label="soldered component"]')).toBeInTheDocument()
+    expect(container.querySelector('.server-node-drag-handle')).toHaveTextContent('AC')
+    expect(container).not.toHaveTextContent('Empty')
   })
 
   it('renders exactly one NAS power representation for each mode', () => {

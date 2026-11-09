@@ -52,7 +52,7 @@ export const hostResourceGroups = sqliteTable('host_resource_groups', {
   createdAtMs: integer('created_at_ms').notNull(),
 }, (table) => [
   uniqueIndex('host_resource_groups_identity_unique').on(table.resourceIdentityId),
-  uniqueIndex('host_resource_groups_host_key_unique').on(table.hostItemId, table.semanticKey),
+  uniqueIndex('host_resource_groups_host_type_key_unique').on(table.hostItemId, table.resourceType, table.semanticKey),
   uniqueIndex('host_resource_groups_host_id_unique').on(table.hostItemId, table.id),
   index('host_resource_groups_host_type_index').on(table.hostItemId, table.resourceType),
   check('host_resource_groups_type_check', sql`${table.resourceType} IN (
@@ -592,6 +592,7 @@ export const hostPowerRedundancyModes = sqliteTable('host_power_redundancy_modes
 
 export const compatibilityConstraintGroups = sqliteTable('compatibility_constraint_groups', {
   id: integer('id').primaryKey({ autoIncrement: true }),
+  catalogResourceId: integer('catalog_resource_id'),
   hostProfileId: integer('host_profile_id').notNull().references(
     () => hostCompatibilityProfiles.id,
     { onDelete: 'cascade' },
@@ -601,6 +602,7 @@ export const compatibilityConstraintGroups = sqliteTable('compatibility_constrai
   kind: text('kind').notNull(),
 }, (table) => [
   uniqueIndex('compatibility_constraint_groups_key_unique').on(table.hostProfileId, table.semanticKey),
+  uniqueIndex('compatibility_constraint_groups_catalog_id_unique').on(table.hostProfileId, table.catalogResourceId),
   check('compatibility_constraint_groups_kind_check', sql`${table.kind} = 'mutually-exclusive'`),
 ])
 

@@ -1288,7 +1288,7 @@ describe('InspectorPanel', () => {
     expect(screen.queryByText('Ready for drag and drop.')).not.toBeInTheDocument()
     expect(screen.queryByText('Selected Item')).not.toBeInTheDocument()
     expect(screen.queryByText('Assigned')).not.toBeInTheDocument()
-    expect(screen.queryByText('Server Slots')).not.toBeInTheDocument()
+    expect(screen.queryByText(/(?:Computer|Desktop PC|Server) Slots/)).not.toBeInTheDocument()
     expect(screen.queryByText('Inventory item')).not.toBeInTheDocument()
 
     expect(screen.getByText('1TB NVMe SSD')).toBeInTheDocument()
@@ -1723,7 +1723,7 @@ describe('InspectorPanel', () => {
     expect(screen.getByRole('combobox', { name: 'Generation' })).toHaveTextContent('DDR4')
     expect(screen.getByRole('combobox', { name: 'Speed' })).toHaveTextContent('3200')
     expect(screen.getByRole('combobox', { name: 'Form Factor' })).toHaveTextContent('SO-DIMM')
-    expect(screen.queryByText('Server Slots')).not.toBeInTheDocument()
+    expect(screen.queryByText(/(?:Computer|Desktop PC|Server) Slots/)).not.toBeInTheDocument()
   })
 
   it('debounces a RAM manufacturer edit into one complete item update', async () => {
@@ -1902,14 +1902,14 @@ describe('InspectorPanel', () => {
   it('mounts server slots only while the Slots tab is active', async () => {
     const user = userEvent.setup()
     renderInspector({ selectedItemId: 'cpu:1' })
-    expect(screen.queryByText('Server Slots')).not.toBeInTheDocument()
+    expect(screen.queryByText(/(?:Computer|Desktop PC|Server) Slots/)).not.toBeInTheDocument()
 
     cleanup()
     renderInspector({ selectedItemId: 'server:1' })
 
-    expect(screen.queryByText('Server Slots')).not.toBeInTheDocument()
+    expect(screen.queryByText(/(?:Computer|Desktop PC|Server) Slots/)).not.toBeInTheDocument()
     await user.click(screen.getByRole('tab', { name: 'Slots' }))
-    expect(screen.getByText('Server Slots')).toBeInTheDocument()
+    expect(screen.getByText('Desktop PC Slots')).toBeInTheDocument()
     expect(screen.getAllByText('Dell OptiPlex Micro 7090').length).toBeGreaterThan(0)
   })
 

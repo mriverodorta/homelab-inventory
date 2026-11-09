@@ -16,7 +16,7 @@ async function fixture() {
   roots.push(root)
   const filePath = join(root, 'core.sqlite')
   const handle = await openManagedDatabase({ filePath, schemaName: 'core' })
-  const migrations = await Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
+  const migrations = await Promise.all(CORE_MIGRATIONS.slice(0, 37).map(async (migration) => ({
     ...migration, sql: await readFile(resolve(import.meta.dir, '../core/migrations/generated', migration.file), 'utf8'),
   })))
   await applyCommittedMigrations(handle, migrations.slice(0, -1))

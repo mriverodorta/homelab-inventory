@@ -5,10 +5,12 @@ import {
   NAS_FINGERPRINT_VERSION,
   NETWORK_FINGERPRINT_VERSION,
   M2_AE_FINGERPRINT_VERSION,
+  LAPTOP_FINGERPRINT_VERSION,
   SUPPORTED_FINGERPRINT_VERSIONS,
   canonicalizeCatalogItemV10,
   canonicalizeCatalogItemV11,
   canonicalizeCatalogItemV12,
+  canonicalizeCatalogItemV13,
   canonicalizeCatalogItemV9,
   legacyMeasurementPathsV9,
 } from '../../packages/catalog-protocol/src/index.ts'
@@ -71,7 +73,9 @@ export function projectCatalogTemplateForRuntime(template) {
     throw new Error(`Catalog template ${String(template.templateKey)} uses an unsupported fingerprint version.`)
   }
 
-  const item = template.fingerprintVersion === M2_AE_FINGERPRINT_VERSION
+  const item = template.fingerprintVersion === LAPTOP_FINGERPRINT_VERSION
+    ? canonicalizeCatalogItemV13(template.item)
+    : template.fingerprintVersion === M2_AE_FINGERPRINT_VERSION
     ? canonicalizeCatalogItemV12(template.item)
     : template.fingerprintVersion === NETWORK_FINGERPRINT_VERSION
     ? canonicalizeCatalogItemV11(template.item)
@@ -84,7 +88,9 @@ export function projectCatalogTemplateForRuntime(template) {
   return {
     ...template,
     item,
-    runtimeCanonicalVersion: template.fingerprintVersion === M2_AE_FINGERPRINT_VERSION
+    runtimeCanonicalVersion: template.fingerprintVersion === LAPTOP_FINGERPRINT_VERSION
+      ? LAPTOP_FINGERPRINT_VERSION
+      : template.fingerprintVersion === M2_AE_FINGERPRINT_VERSION
       ? M2_AE_FINGERPRINT_VERSION
       : template.fingerprintVersion === NETWORK_FINGERPRINT_VERSION
       ? NETWORK_FINGERPRINT_VERSION

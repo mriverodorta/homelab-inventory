@@ -12,6 +12,28 @@ import { WasmEngineRuntime } from '../../shared/engine/wasm-runtime.mjs'
 const wasmPath = path.join(process.cwd(), 'src', 'engine', 'generated', 'homelab_engine.wasm')
 
 describe('Rust WASM engine integration', () => {
+  it.each([
+    ['internal-psu', null, 'computer-internal-input'],
+    ['external-adapter', 'fixed', 'oem-power-adapter-input'],
+  ])('recognizes laptop %s power ownership in the real module', async (configuration, disposition, kind) => {
+    const runtime = await WasmEngineRuntime.instantiate(await fs.readFile(wasmPath))
+    const item = { item_type: 'server', id: 1 }
+    const handle = runtime.create(encodeEngineSnapshot({ revision: 1, project_name: 'Synthetic laptop', topology: {
+      ...EMPTY_ENGINE_TOPOLOGY,
+      items: [{ item, archived: false, power_configuration: configuration, power_adapter_disposition: disposition,
+        allow_outlet_fan_out: false, ports: [{ id: 1, key: 'ac-input', port_type: 'ac-input', slot_number: 1, speed: null, endpoints: [] }] }],
+      placements: [item],
+    } }))
+    try {
+      const response = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+        protocol_version: 1, request_id: 1, base_revision: 1, operation: { kind: 'power-topology' },
+      })))
+      expect(response.result).toMatchObject({ kind: 'power-topology', payload: { topology: { endpoints: [
+        expect.objectContaining({ power: expect.objectContaining({ direction: 'input', kind }) }),
+      ] } } })
+    } finally { runtime.destroy(handle) }
+  })
+
   it('dispatches MessagePack requests with Unicode through the real module', async () => {
     const bytes = await fs.readFile(wasmPath)
     const runtime = await WasmEngineRuntime.instantiate(bytes)
