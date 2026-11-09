@@ -273,7 +273,7 @@ export function stripPrivateCatalogDataV13(value: unknown, path = ''): unknown {
   if (!value || typeof value !== 'object') return value
   const entries = Object.entries(value).filter(([key]) => {
     if (key.normalize('NFKC').toLowerCase() === '$hliv13evidence') throw new Error('Reserved fingerprint-v13 hash marker.')
-    if ((path === '' || /^fixedComponents\[\d+\]\.item$/.test(path)) && ['id', 'key', 'hardwareClass', 'usageRole', 'scope', 'ownerProjectId', 'archivedAt'].includes(key)) return false
+    if ((path === '' || /^fixedComponents\[\d+\]\.item$/.test(path)) && ['id', 'inventoryId', 'key', 'hardwareClass', 'usageRole', 'scope', 'ownerProjectId', 'archivedAt', 'properties', 'registryLink', 'catalogLink'].includes(key)) return false
     if (key === 'location' && /^compatibility\.host\.storageSlots\[\d+\]$/.test(path)) return true
     return !PRIVATE_FIELD_NAMES.has(key)
   })

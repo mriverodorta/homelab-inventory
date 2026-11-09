@@ -28,6 +28,17 @@ describe('laptop fingerprint v13', () => {
   it('preserves every historical immutable contract vector', async () => {
     await expect(assertCatalogProtocolContract()).resolves.toBeUndefined()
   })
+  it('excludes local identities, private properties and assigned kits before public validation', async () => {
+    const source = laptopFixture()
+    const expected = await digest(source)
+    const result = await digest({ ...source, id: 1, inventoryId: 333, archivedAt: null,
+      properties: { displayName: 'Private machine' }, notes: 'Private note',
+      registryLink: { id: 92 }, assignments: [{ id: 7, specs: { capacityGb: 32 } }],
+    })
+    expect(result.item).toEqual(expected.item)
+    expect(result.identityHash).toBe(expected.identityHash)
+    expect(result.contentHash).toBe(expected.contentHash)
+  })
   it('maps local numeric server identity without changing source references', async () => {
     const result = await projectCatalogItem({ ...laptopFixture(), type: 'server', hardwareClass: 'laptop', id: 71 }, { fingerprintVersion: 13 })
     expect(result.status).toBe('eligible')
