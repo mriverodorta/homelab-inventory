@@ -488,3 +488,15 @@ export function assertCanonicalCatalogItemV12(value: unknown): void {
     throw new Error('Fingerprint-v12 item is not in canonical form.')
   }
 }
+
+/** Validate physical evidence without v12's OEM key migration or eligibility rule. */
+export function assertPhysicalM2Resource(value: Record<string, JsonValue>): void {
+  const path = 'compatibility.host.optionalModuleSlots'
+  if (value.socketKeys !== undefined) canonicalSocketKeys(value.socketKeys, `${path}.socketKeys`)
+  if (value.moduleSizes !== undefined) stringArray(value.moduleSizes, `${path}.moduleSizes`, true)
+  if (value.availableBuses !== undefined) {
+    const canonical = canonicalHostBuses(value.availableBuses, `${path}.availableBuses`)
+    if (canonicalJson(canonical) !== canonicalJson(value.availableBuses)) throw new Error(`${path}.availableBuses must use canonical physical bus fields.`)
+  }
+  if (value.acceptedModuleKinds !== undefined) throw new Error(`${path} uses descriptive intendedModuleKinds, not acceptedModuleKinds.`)
+}

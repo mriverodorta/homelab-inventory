@@ -18,7 +18,7 @@ describe('catalog protocol normalization', () => {
     expect(SERVER_FINGERPRINT_VERSION).toBe(6)
     expect(MOTHERBOARD_FINGERPRINT_VERSION).toBe(7)
     expect(RAM_FINGERPRINT_VERSION).toBe(8)
-    expect(SUPPORTED_FINGERPRINT_VERSIONS).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    expect(SUPPORTED_FINGERPRINT_VERSIONS).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
   })
 
   it('normalizes controlled manufacturer aliases', () => {

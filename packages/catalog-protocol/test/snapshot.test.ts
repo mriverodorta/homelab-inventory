@@ -155,7 +155,7 @@ describe('signed catalog snapshots', () => {
       templates: [{
         templateKey: 'future-server-v7',
         revision: 1,
-        fingerprintVersion: 13,
+        fingerprintVersion: 14,
         identityHash: projection.identityHash,
         contentHash: projection.contentHash,
         item: projection.item,

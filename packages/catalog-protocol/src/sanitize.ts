@@ -122,25 +122,26 @@ function sanitizeJson(value: unknown, depth = 0): JsonValue | undefined {
   return undefined
 }
 
-function sanitizePublicJson(value: unknown, depth = 0): JsonValue | undefined {
-  if (depth > MAX_JSON_DEPTH) return undefined
+function sanitizePublicJson(value: unknown, depth = 0, preserveEmpty = false, path = ''): JsonValue | undefined {
+  if (depth > (preserveEmpty ? 12 : MAX_JSON_DEPTH)) return undefined
   if (value === null || typeof value === 'boolean') return value
   if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
   if (typeof value === 'string') return nonEmptyString(value)
   if (Array.isArray(value)) {
     return value
       .slice(0, MAX_ARRAY_LENGTH)
-      .map((entry) => sanitizePublicJson(entry, depth + 1))
+      .map((entry, index) => sanitizePublicJson(entry, depth + 1, preserveEmpty, `${path}[${index}]`))
       .filter((entry): entry is JsonValue => entry !== undefined)
   }
   if (value && typeof value === 'object') {
     const output: Record<string, JsonValue> = {}
     for (const [key, entry] of Object.entries(value).slice(0, MAX_OBJECT_KEYS)) {
-      if (PRIVATE_FIELD_NAMES.has(key)) continue
-      const sanitized = sanitizePublicJson(entry, depth + 1)
+      const physicalLocation = preserveEmpty && key === 'location' && /^compatibility\.host\.storageSlots\[\d+\]$/.test(path)
+      if (PRIVATE_FIELD_NAMES.has(key) && !physicalLocation) continue
+      const sanitized = sanitizePublicJson(entry, depth + 1, preserveEmpty, path ? `${path}.${key}` : key)
       if (sanitized !== undefined) output[key] = sanitized
     }
-    return Object.keys(output).length > 0 ? output : undefined
+    return Object.keys(output).length > 0 || (preserveEmpty && Object.keys(value).length === 0) ? output : undefined
   }
   return undefined
 }
@@ -258,6 +259,28 @@ export function sanitizeCatalogItem(value: unknown): CatalogTemplateItem {
 }
 
 export function sanitizeCatalogItemV9(value: unknown): CatalogTemplateItem {
+  return sanitizeCanonicalPublicItem(value, false)
+}
+
+/** V13 retains explicit empty evidence without changing historical sanitization. */
+export function sanitizeCatalogItemV13(value: unknown): CatalogTemplateItem {
+  return sanitizeCanonicalPublicItem(value, true)
+}
+
+/** Strip private instance data before strict v13 validation, without coercing public evidence. */
+export function stripPrivateCatalogDataV13(value: unknown, path = ''): unknown {
+  if (Array.isArray(value)) return value.map((entry, index) => stripPrivateCatalogDataV13(entry, `${path}[${index}]`))
+  if (!value || typeof value !== 'object') return value
+  const entries = Object.entries(value).filter(([key]) => {
+    if (key.normalize('NFKC').toLowerCase() === '$hliv13evidence') throw new Error('Reserved fingerprint-v13 hash marker.')
+    if ((path === '' || /^fixedComponents\[\d+\]\.item$/.test(path)) && ['id', 'key', 'hardwareClass', 'usageRole', 'scope', 'ownerProjectId', 'archivedAt'].includes(key)) return false
+    if (key === 'location' && /^compatibility\.host\.storageSlots\[\d+\]$/.test(path)) return true
+    return !PRIVATE_FIELD_NAMES.has(key)
+  })
+  return Object.fromEntries(entries.map(([key, entry]) => [key, stripPrivateCatalogDataV13(entry, path ? `${path}.${key}` : key)]))
+}
+
+function sanitizeCanonicalPublicItem(value: unknown, preserveEmpty: boolean): CatalogTemplateItem {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Catalog item must be an object.')
   }
@@ -282,15 +305,23 @@ export function sanitizeCatalogItemV9(value: unknown): CatalogTemplateItem {
     if (aliases.length > 0) item.aliases = [...new Set(aliases)]
   }
 
-  const specs = sanitizePublicJson(source.specs)
+  const specs = sanitizePublicJson(source.specs, 0, preserveEmpty, 'specs')
   if (specs && !Array.isArray(specs) && typeof specs === 'object') item.specs = specs
 
   if (Array.isArray(source.ports)) {
     const ports = source.ports.slice(0, MAX_PORTS).map(sanitizePortV9).filter((entry): entry is CatalogPort => entry !== undefined)
-    if (ports.length > 0) item.ports = ports
+    if (ports.length > 0 || (preserveEmpty && source.ports.length === 0)) item.ports = ports
+    if (preserveEmpty) {
+      for (const [index, port] of ports.entries()) {
+        const original = source.ports[index] as Record<string, unknown>
+        for (const key of ['supportedSpeedsBps', 'operatingModes', 'media', 'endpoints'] as const) {
+          if (Array.isArray(original[key]) && original[key].length === 0) Object.assign(port, { [key]: [] })
+        }
+      }
+    }
   }
 
-  const compatibility = sanitizePublicJson(source.compatibility)
+  const compatibility = sanitizePublicJson(source.compatibility, 0, preserveEmpty, 'compatibility')
   if (compatibility && !Array.isArray(compatibility) && typeof compatibility === 'object') {
     item.compatibility = compatibility
   }
@@ -311,7 +342,7 @@ export function sanitizeCatalogItemV9(value: unknown): CatalogTemplateItem {
   ])
   for (const [key, raw] of Object.entries(source).slice(0, MAX_OBJECT_KEYS)) {
     if (knownTopLevel.has(key) || PRIVATE_FIELD_NAMES.has(key)) continue
-    const sanitized = sanitizePublicJson(raw, 1)
+    const sanitized = sanitizePublicJson(raw, 1, preserveEmpty, key)
     if (sanitized !== undefined) (item as unknown as Record<string, JsonValue>)[key] = sanitized
   }
 

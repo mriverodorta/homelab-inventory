@@ -1,0 +1,1556 @@
+{
+  "schemaVersion": 1,
+  "fingerprintVersion": 13,
+  "cases": [
+    {
+      "name": "soldered-cpu-replaceable-memory",
+      "input": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ]
+          }
+        }
+      },
+      "item": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ]
+          }
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          }
+        ]
+      },
+      "identityPayload": {
+        "type": "laptop",
+        "manufacturer": "synthetic",
+        "model": "notebook 13",
+        "topologySignature": "0753d4ec98330f49f09fe201cfd9a42849f52743de7fef74fd90421a487443e7"
+      },
+      "identityHash": "b9a90f4ae1ed0509423cc84e25a0447250536e2c1419e00381aebbf8ae7059be",
+      "contentHash": "7b4b5c6a987d7817af9ed8fb0daf0b6683eb34144d380ed86dcb0584a9e6a080"
+    },
+    {
+      "name": "all-fixed-memory",
+      "input": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          },
+          {
+            "id": 2,
+            "componentType": "ram",
+            "disposition": "soldered",
+            "label": "Memory",
+            "item": {
+              "type": "ram",
+              "name": "Synthetic fixed memory",
+              "specs": {
+                "capacityMib": 8192,
+                "generation": "DDR5",
+                "formFactor": "Onboard"
+              }
+            }
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 0,
+              "maxCapacityMib": 8192
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ]
+          }
+        }
+      },
+      "item": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 0,
+              "maxCapacityMib": 8192
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ]
+          }
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          },
+          {
+            "id": 2,
+            "componentType": "ram",
+            "disposition": "soldered",
+            "label": "Memory",
+            "item": {
+              "type": "ram",
+              "name": "Synthetic fixed memory",
+              "specs": {
+                "capacityMib": 8192,
+                "generation": "DDR5",
+                "formFactor": "Onboard"
+              }
+            }
+          }
+        ]
+      },
+      "identityPayload": {
+        "type": "laptop",
+        "manufacturer": "synthetic",
+        "model": "notebook 13",
+        "topologySignature": "5e4c1ef68a7cbc9186e471dd7830245d0d783a03acf4e43a1b3a193599e33090"
+      },
+      "identityHash": "f8b0f8176c19794c6fa0f843399936d78b3a5185a41d9cf15a0a567845767331",
+      "contentHash": "7129d94fbbd680428615d9bf1cda3a700dc836d35c8be2fee6cabbd37d62e162"
+    },
+    {
+      "name": "mixed-memory",
+      "input": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          },
+          {
+            "id": 2,
+            "componentType": "ram",
+            "disposition": "soldered",
+            "label": "Memory",
+            "item": {
+              "type": "ram",
+              "name": "Synthetic fixed memory",
+              "specs": {
+                "capacityMib": 8192,
+                "generation": "DDR5",
+                "formFactor": "Onboard"
+              }
+            }
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 1,
+              "maxCapacityMib": 40960,
+              "maxModuleCapacityMib": 32768
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ]
+          }
+        }
+      },
+      "item": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 1,
+              "maxCapacityMib": 40960,
+              "maxModuleCapacityMib": 32768
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ]
+          }
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          },
+          {
+            "id": 2,
+            "componentType": "ram",
+            "disposition": "soldered",
+            "label": "Memory",
+            "item": {
+              "type": "ram",
+              "name": "Synthetic fixed memory",
+              "specs": {
+                "capacityMib": 8192,
+                "generation": "DDR5",
+                "formFactor": "Onboard"
+              }
+            }
+          }
+        ]
+      },
+      "identityPayload": {
+        "type": "laptop",
+        "manufacturer": "synthetic",
+        "model": "notebook 13",
+        "topologySignature": "d5cca563e4c2c8b656eebdb51454035985ac3bcb6ff6b06b8bf94b6c0a0f0837"
+      },
+      "identityHash": "fae4dae7a45f6e94c3e32a8a9f80e2491f2a1adfa748b6cca4530b271aa83e80",
+      "contentHash": "dddc733592f589d28cab38bef90e4dc9eaf0e3f4150d2623d56662baa62a24b7"
+    },
+    {
+      "name": "socketed-cpu",
+      "input": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ],
+            "cpu": {
+              "sockets": [
+                "Synthetic Socket"
+              ],
+              "socketCount": 1
+            }
+          }
+        }
+      },
+      "item": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ],
+            "cpu": {
+              "sockets": [
+                "Synthetic Socket"
+              ],
+              "socketCount": 1
+            }
+          }
+        }
+      },
+      "identityPayload": {
+        "type": "laptop",
+        "manufacturer": "synthetic",
+        "model": "notebook 13",
+        "topologySignature": "8cf58b0f9b9cc18e11fab205d21baad41e130de674b09d063414443d4bf32f21"
+      },
+      "identityHash": "e60d236d16c03c3e4100c6ff9889201a2044a91d43df5356c758b03002a823f7",
+      "contentHash": "392611137030111868937d001454880b9c6456e5e6f7ec75e7c597b0b528df70"
+    },
+    {
+      "name": "physical-m2-unknown",
+      "input": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "physical-e",
+                "count": 1,
+                "interfaceFamily": "m2-ae",
+                "socketKeys": [
+                  "E"
+                ],
+                "moduleSizes": [
+                  "2230"
+                ],
+                "intendedModuleKinds": [
+                  "wireless-card"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "item": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "physical-e",
+                "count": 1,
+                "interfaceFamily": "m2-ae",
+                "socketKeys": [
+                  "E"
+                ],
+                "moduleSizes": [
+                  "2230"
+                ],
+                "intendedModuleKinds": [
+                  "wireless-card"
+                ]
+              }
+            ]
+          }
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          }
+        ]
+      },
+      "identityPayload": {
+        "type": "laptop",
+        "manufacturer": "synthetic",
+        "model": "notebook 13",
+        "topologySignature": "bc28ffb05bf74387f56615450fd9fdbd8d95f1415e3dbe67efbb8d60b71c9fe5"
+      },
+      "identityHash": "7d08674f58f13f546b0d22ac777f11f55b29837901184a685f5eddb897f2c810",
+      "contentHash": "6c65300e580d3c6b9d853333421f4acea3b0fd7947cca5c98d84b24b764ce553"
+    },
+    {
+      "name": "physical-m2-empty",
+      "input": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "physical-e",
+                "count": 1,
+                "interfaceFamily": "m2-ae",
+                "socketKeys": [
+                  "E"
+                ],
+                "moduleSizes": [
+                  "2230"
+                ],
+                "intendedModuleKinds": [
+                  "wireless-card"
+                ],
+                "availableBuses": []
+              }
+            ]
+          }
+        }
+      },
+      "item": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "physical-e",
+                "count": 1,
+                "interfaceFamily": "m2-ae",
+                "socketKeys": [
+                  "E"
+                ],
+                "moduleSizes": [
+                  "2230"
+                ],
+                "intendedModuleKinds": [
+                  "wireless-card"
+                ],
+                "availableBuses": []
+              }
+            ]
+          }
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          }
+        ]
+      },
+      "identityPayload": {
+        "type": "laptop",
+        "manufacturer": "synthetic",
+        "model": "notebook 13",
+        "topologySignature": "b5447c7caa2a2752e94e78c69d8bd821ca1ac5039cfcba7f341326dc8bb8802f"
+      },
+      "identityHash": "34e16be3371af77d32d2b1912de212a6eec6fd06723ecfcb4b120c72618f9fd6",
+      "contentHash": "38419dd609aec055314177b4f30bd2fdced99f4150725a8c46ce17abc018ddbf"
+    },
+    {
+      "name": "physical-m2-populated",
+      "input": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "physical-e",
+                "count": 1,
+                "interfaceFamily": "m2-ae",
+                "socketKeys": [
+                  "E"
+                ],
+                "moduleSizes": [
+                  "2230"
+                ],
+                "intendedModuleKinds": [
+                  "wireless-card"
+                ],
+                "availableBuses": [
+                  {
+                    "family": "pcie",
+                    "lanes": 1,
+                    "pcieGeneration": 3
+                  },
+                  {
+                    "family": "usb",
+                    "usbGeneration": "USB 2.0"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "item": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "physical-e",
+                "count": 1,
+                "interfaceFamily": "m2-ae",
+                "socketKeys": [
+                  "E"
+                ],
+                "moduleSizes": [
+                  "2230"
+                ],
+                "intendedModuleKinds": [
+                  "wireless-card"
+                ],
+                "availableBuses": [
+                  {
+                    "family": "pcie",
+                    "lanes": 1,
+                    "pcieGeneration": 3
+                  },
+                  {
+                    "family": "usb",
+                    "usbGeneration": "USB 2.0"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          }
+        ]
+      },
+      "identityPayload": {
+        "type": "laptop",
+        "manufacturer": "synthetic",
+        "model": "notebook 13",
+        "topologySignature": "6b290523f4d54c434168fcc12a0615a19f407b10fc5ed394eb089920be13386c"
+      },
+      "identityHash": "a9b2e16bd7777eef7d803c6893faf737964c549de38b4b5dbeb6ddd522fd8324",
+      "contentHash": "abed352a04acf85d9427f43e0d2c551a23f759714a49293aad3c8d25c129aab2"
+    },
+    {
+      "name": "power-fixed",
+      "input": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ],
+            "power": {
+              "configuration": "external-adapter",
+              "adapterDisposition": "fixed",
+              "connector": "Synthetic barrel",
+              "supportedPowerMw": [
+                65000
+              ]
+            }
+          }
+        }
+      },
+      "item": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ],
+            "power": {
+              "configuration": "external-adapter",
+              "adapterDisposition": "fixed",
+              "connector": "Synthetic barrel",
+              "supportedPowerMw": [
+                65000
+              ]
+            }
+          }
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          }
+        ]
+      },
+      "identityPayload": {
+        "type": "laptop",
+        "manufacturer": "synthetic",
+        "model": "notebook 13",
+        "topologySignature": "6b0078e4926874b0fcd1a62ccb5cfcebe78e592ff34e10325526f671c2b90ddd"
+      },
+      "identityHash": "8cf0c187035127ff38a72e735ee857f3dd82173881b965575bb83c118ffc6163",
+      "contentHash": "4d28499c470ba49b264f867ab0ca014574161e64b1c8eaf04b58b771bb1a21af"
+    },
+    {
+      "name": "power-replaceable",
+      "input": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ],
+            "power": {
+              "configuration": "external-adapter",
+              "adapterDisposition": "replaceable",
+              "connector": "Synthetic barrel",
+              "supportedPowerMw": [
+                65000
+              ]
+            }
+          }
+        }
+      },
+      "item": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct"
+              }
+            ],
+            "power": {
+              "configuration": "external-adapter",
+              "adapterDisposition": "replaceable",
+              "connector": "Synthetic barrel",
+              "supportedPowerMw": [
+                65000
+              ]
+            }
+          }
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          }
+        ]
+      },
+      "identityPayload": {
+        "type": "laptop",
+        "manufacturer": "synthetic",
+        "model": "notebook 13",
+        "topologySignature": "35101910287397d533fe7477e7b0bdaecd74c5fc208643f77612eec07ef2a42f"
+      },
+      "identityHash": "2847a3be37aef0df7ae9267f59c5d36f97e99d5536d9f7cae811c0ac5ba1b56f",
+      "contentHash": "85a62f72203b8efc03cd00800204661ba806447b5f7507cf9a795058113ce445"
+    },
+    {
+      "name": "semantic-relationships",
+      "input": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct",
+                "controllerSlotIds": [
+                  7
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 7,
+                "key": "nvme",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "storage-controller"
+                ]
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 2,
+                "key": "boot",
+                "count": 1,
+                "controllerSlotId": 7
+              }
+            ],
+            "constraintGroups": [
+              {
+                "id": 1,
+                "key": "exclusive",
+                "kind": "mutually-exclusive",
+                "members": [
+                  {
+                    "resourceType": "storage-slot",
+                    "resourceId": 1
+                  },
+                  {
+                    "resourceType": "boot-device-slot",
+                    "resourceId": 2
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "item": {
+        "type": "laptop",
+        "name": "Synthetic Notebook 13",
+        "manufacturer": "Synthetic",
+        "model": "Notebook 13",
+        "specs": {
+          "formFactor": "Laptop"
+        },
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "formFactors": [
+                "SO-DIMM"
+              ],
+              "maxCapacityMib": 65536,
+              "maxModuleCapacityMib": 32768,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "nvme",
+                "label": "Drive",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "backplane": "direct",
+                "controllerSlotIds": [
+                  7
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 7,
+                "key": "nvme",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "storage-controller"
+                ]
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 2,
+                "key": "boot",
+                "count": 1,
+                "controllerSlotId": 7
+              }
+            ],
+            "constraintGroups": [
+              {
+                "id": 1,
+                "key": "exclusive",
+                "kind": "mutually-exclusive",
+                "members": [
+                  {
+                    "resourceType": "storage-slot",
+                    "resourceId": 1
+                  },
+                  {
+                    "resourceType": "boot-device-slot",
+                    "resourceId": 2
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "fixedComponents": [
+          {
+            "id": 1,
+            "componentType": "cpu",
+            "disposition": "soldered",
+            "label": "Processor",
+            "item": {
+              "type": "cpu",
+              "name": "Synthetic Mobile 13",
+              "manufacturer": "Synthetic",
+              "model": "Mobile 13",
+              "specs": {
+                "generation": "Synthetic 1",
+                "tdpMw": 15000
+              }
+            }
+          }
+        ]
+      },
+      "identityPayload": {
+        "type": "laptop",
+        "manufacturer": "synthetic",
+        "model": "notebook 13",
+        "topologySignature": "a8aa9f5a4af87f05f3308221855e46d47a83dd16640be3d7b064389c2e975112"
+      },
+      "identityHash": "4734100dc9462d6ec47d97367a951acc175be26b5f45595e75bf36afa334f975",
+      "contentHash": "9d63228c7fbbb4b7792174672f6ff3a0b7d1d74b64cf3c7b325bed1dd449da72"
+    }
+  ]
+}

@@ -543,7 +543,7 @@ describe('category-aware catalog projection', () => {
   it('uses server fingerprint v6 for complete material server topology', async () => {
     expect(SERVER_FINGERPRINT_VERSION).toBe(6)
     expect(MOTHERBOARD_FINGERPRINT_VERSION).toBe(7)
-    expect(SUPPORTED_FINGERPRINT_VERSIONS).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    expect(SUPPORTED_FINGERPRINT_VERSIONS).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
 
     const base = {
       type: 'server',

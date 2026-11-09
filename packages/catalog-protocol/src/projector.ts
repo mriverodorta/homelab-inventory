@@ -1,4 +1,6 @@
 import { canonicalJson } from './canonicalize'
+import { canonicalizeCatalogItemV13 } from './laptop-v13'
+import { laptopIdentityPayload } from './laptop-identity'
 import { canonicalizeCatalogItemV10, canonicalizeCatalogItemV11, canonicalizeCatalogItemV9 } from './canonical-units'
 import { canonicalizeCatalogItemV12, projectM2PhysicalHashValue } from './m2-physical'
 import { computeCatalogDigestsWithIdentity, sha256Hex } from './hash'
@@ -19,6 +21,7 @@ import {
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
   M2_PHYSICAL_FINGERPRINT_VERSION,
+  LAPTOP_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
   NETWORK_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
@@ -42,7 +45,7 @@ type SourceItem = Record<string, unknown> & {
 }
 
 const SUPPORTED_TYPES = new Set([
-  'desktop', 'workstation', 'server', 'nas', 'cpu', 'ram', 'storage', 'motherboard', 'gpu', 'network', 'wireless',
+  'laptop', 'desktop', 'workstation', 'server', 'nas', 'cpu', 'ram', 'storage', 'motherboard', 'gpu', 'network', 'wireless',
   'cpuCooler', 'case', 'powerSupply', 'soundCard', 'powerAdapter', 'switch', 'patchPanel',
   'monitor', 'ups', 'powerStrip',
 ])
@@ -894,6 +897,7 @@ export async function projectCatalogItem(
     hardwareClass === 'desktop'
     || hardwareClass === 'workstation'
     || hardwareClass === 'server'
+    || hardwareClass === 'laptop'
   )
     ? hardwareClass
     : sourceType
@@ -912,10 +916,13 @@ export async function projectCatalogItem(
   }
 
   const fingerprintVersion = options.fingerprintVersion ?? FINGERPRINT_VERSION
+  if (type === 'laptop' && fingerprintVersion !== LAPTOP_FINGERPRINT_VERSION) return { status: 'ineligible', source: sourceRef, reason: 'unsupported-type' }
   if (!SUPPORTED_FINGERPRINT_VERSIONS.includes(fingerprintVersion)) {
     throw new Error(`Unsupported catalog fingerprint version ${fingerprintVersion}.`)
   }
-  const item = fingerprintVersion === M2_PHYSICAL_FINGERPRINT_VERSION
+  const item = fingerprintVersion === LAPTOP_FINGERPRINT_VERSION
+    ? canonicalizeCatalogItemV13({ ...source, type })
+    : fingerprintVersion === M2_PHYSICAL_FINGERPRINT_VERSION
     ? canonicalizeCatalogItemV12({ ...source, type })
     : fingerprintVersion === NETWORK_FINGERPRINT_VERSION
     ? canonicalizeCatalogItemV11({ ...source, type })
@@ -927,7 +934,11 @@ export async function projectCatalogItem(
   let identityPayload: Record<string, JsonValue>
   let productFamily: CatalogProductFamily | undefined
   let variantEvidence: CatalogVariantEvidence | undefined
-  if (fingerprintVersion === M2_PHYSICAL_FINGERPRINT_VERSION) {
+  if (fingerprintVersion === LAPTOP_FINGERPRINT_VERSION) {
+    identityPayload = await laptopIdentityPayload(item)
+    productFamily = { manufacturer: String(identityPayload.manufacturer), model: String(identityPayload.model), physicalClass: 'laptop' }
+    variantEvidence = { source: 'topology', completeness: (item.compatibility!.host as Record<string, JsonValue>).topologyCompleteness as CatalogVariantEvidence['completeness'] ?? 'partial', topologySignature: String(identityPayload.topologySignature) }
+  } else if (fingerprintVersion === M2_PHYSICAL_FINGERPRINT_VERSION) {
     const variant = await m2PhysicalVariantIdentity(item)
     if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
     identityPayload = variant.identityPayload

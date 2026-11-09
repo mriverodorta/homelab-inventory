@@ -1,10 +1,12 @@
 import { digestCatalogTemplate } from './projector'
+import laptopVectors from './laptop-v13-vectors.json'
 import {
   CANONICAL_UNITS_FINGERPRINT_VERSION,
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
   M2_PHYSICAL_FINGERPRINT_VERSION,
+  LAPTOP_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
   NETWORK_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
@@ -613,7 +615,7 @@ export async function assertCatalogProtocolContract(): Promise<void> {
     || SERVER_FINGERPRINT_VERSION !== 6 || MOTHERBOARD_FINGERPRINT_VERSION !== 7
     || RAM_FINGERPRINT_VERSION !== 8 || CANONICAL_UNITS_FINGERPRINT_VERSION !== 9
     || NAS_FINGERPRINT_VERSION !== 10 || NETWORK_FINGERPRINT_VERSION !== 11
-    || M2_PHYSICAL_FINGERPRINT_VERSION !== 12) {
+    || M2_PHYSICAL_FINGERPRINT_VERSION !== 12 || LAPTOP_FINGERPRINT_VERSION !== 13) {
     throw new Error(`Catalog fingerprint version ${FINGERPRINT_VERSION} has no publication contract.`)
   }
 
@@ -728,6 +730,14 @@ export async function assertCatalogProtocolContract(): Promise<void> {
       || projection.contentHash !== vector.contentHash
     ) {
       throw new Error('Catalog fingerprint-v12 physical M.2 contract changed unexpectedly.')
+    }
+  }
+  for (const vector of laptopVectors.cases) {
+    const projection = await digestCatalogTemplate(vector.input, { fingerprintVersion: LAPTOP_FINGERPRINT_VERSION })
+    if (projection.identityHash !== vector.identityHash || projection.contentHash !== vector.contentHash
+      || JSON.stringify(projection.item) !== JSON.stringify(vector.item)
+      || JSON.stringify(projection.identityPayload) !== JSON.stringify(vector.identityPayload)) {
+      throw new Error(`Catalog fingerprint-v13 laptop contract changed unexpectedly: ${vector.name}.`)
     }
   }
 }
