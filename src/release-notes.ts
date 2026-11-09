@@ -864,11 +864,13 @@ const RELEASE_0_16_22_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_17_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: ['Organize hosts under Computer and identify each by its physical class, including Laptop, independently of how it is used.', 'Import catalog v13 laptops with fixed hardware, replaceable slots and explicit power topology.', 'Shared viewer packages now use the same physical computer labels across systems, canvas, inspectors and previews while preserving existing share identities.'],
   fixes: ['Preserve laptop resource and slot IDs across imports and edits, including matching keys in different resource collections. Count fixed memory toward total capacity without consuming replaceable slots.'],
-  notes: ['Existing inventory and canvas relationships are preserved by the automatic database upgrade. Mini/Micro chassis and DIMM/SO-DIMM memory remain separate choices. Catalog publication requires coordinated Registry and viewer readiness.'],
+  notes: ['Existing inventory and canvas relationships are preserved by the automatic database upgrade. Mini/Micro chassis and DIMM/SO-DIMM memory remain separate choices. Catalog publication requires coordinated Registry and viewer readiness.', 'Release cleanup clears disposable build and scanner caches without deleting Docker volumes.'],
 }
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = { highlights: [], fixes: [], notes: [] }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
@@ -1396,6 +1398,13 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
+  {
+    version: '0.17.0',
+    date: '2026-11-09',
+    channel: 'latest',
+    title: 'Computers, laptops and catalog v13',
+    ...RELEASE_0_17_0_DETAILS,
+  },
   {
     version: '0.16.22',
     date: '2026-11-04',

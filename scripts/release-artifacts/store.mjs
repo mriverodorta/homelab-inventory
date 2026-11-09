@@ -43,7 +43,8 @@ async function readVerifiedReceipt(paths, inputFingerprint, contractId = WASM_AR
 }
 
 export async function buildCanonicalWasm({ root, destination, runCommand = run }) {
-  await runCommand(['docker', 'buildx', 'rm', '--force', ARTIFACT_BUILDER], {
+  await runCommand(['docker', 'buildx', 'prune', '--builder', ARTIFACT_BUILDER, '--all', '--force'], { allowFailure: true, capture: true, log: false })
+  await runCommand(['docker', 'buildx', 'rm', '--force', '--keep-state', ARTIFACT_BUILDER], {
     allowFailure: true,
     capture: true,
     log: false,
@@ -59,7 +60,8 @@ export async function buildCanonicalWasm({ root, destination, runCommand = run }
       root,
     ], { cwd: root })
   } finally {
-    await runCommand(['docker', 'buildx', 'rm', '--force', ARTIFACT_BUILDER], {
+    await runCommand(['docker', 'buildx', 'prune', '--builder', ARTIFACT_BUILDER, '--all', '--force'], { allowFailure: true, capture: true, log: false })
+    await runCommand(['docker', 'buildx', 'rm', '--force', '--keep-state', ARTIFACT_BUILDER], {
       allowFailure: true,
       capture: true,
       log: false,

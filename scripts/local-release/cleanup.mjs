@@ -16,8 +16,11 @@ function candidateImages(revision, architectures) {
 
 export function releaseCleanupCommands({ revision, candidateArchitectures = [], preserveBuilder = false, preserveScanner = false } = {}) {
   const commands = [['docker', 'scout', 'cache', 'prune', '--force', '--sboms']]
-  if (!preserveBuilder) commands.unshift(['docker', 'buildx', 'rm', '--force', RELEASE_BUILDER])
-  if (!preserveScanner) commands.push(['docker', 'volume', 'rm', '--force', RELEASE_TRIVY_CACHE_VOLUME])
+  if (!preserveBuilder) commands.unshift(
+    ['docker', 'buildx', 'prune', '--builder', RELEASE_BUILDER, '--all', '--force'],
+    ['docker', 'buildx', 'rm', '--force', '--keep-state', RELEASE_BUILDER],
+  )
+  if (!preserveScanner) commands.push(['docker', 'run', '--rm', '--volume', `${RELEASE_TRIVY_CACHE_VOLUME}:/root/.cache/`, TRIVY_IMAGE, 'clean', '--all'])
   if (candidateArchitectures.length > 0) {
     const images = candidateImages(revision, candidateArchitectures)
     if (images.length > 0) commands.push(['docker', 'image', 'rm', '--force', ...images])
@@ -41,7 +44,7 @@ async function removeOrphanedReleaseRegistries() {
   ], { capture: true, allowFailure: true, log: false })
   const containers = result.stdout.split(/\s+/).filter(Boolean)
   if (containers.length > 0) {
-    await run(['docker', 'rm', '--force', '--volumes', ...containers], { allowFailure: true, log: false })
+    await run(['docker', 'rm', '--force', ...containers], { allowFailure: true, log: false })
   }
 }
 

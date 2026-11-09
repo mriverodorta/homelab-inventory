@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.17.0] - 2026-11-09
+
 ### Added
 
 - Add shared Catalog Protocol 0.2.0 with dedicated laptop fingerprint v13, fixed hardware and explicit power semantics, empty-evidence preservation, and synthetic conformance vectors. All historical fingerprint identities remain unchanged.
@@ -19,6 +21,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Preserve collection-scoped laptop resource keys, numeric slot identities and assignments through catalog import and edits. Keep unknown and explicitly empty topology evidence distinct; count fixed RAM toward total capacity without consuming replaceable slots.
 - Execute the new resource migration's marked SQL statements individually within one transaction so an intermediate constraint failure cannot be hidden by a later successful statement.
 - Preserve the browser Host header through the isolated local preview proxy so same-origin edits work without weakening cross-origin mutation protection.
+- Release cleanup clears build and scanner cache contents while preserving Docker volumes, including builder state and scanner-cache volumes; failure cleanup follows the same policy.
 
 ## [0.16.22] - 2026-11-04
 

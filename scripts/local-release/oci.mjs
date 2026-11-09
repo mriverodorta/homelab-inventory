@@ -37,7 +37,8 @@ export async function ensureReleaseBuilder() {
 }
 
 export async function recreateReleaseBuilder(paths) {
-  await run(['docker', 'buildx', 'rm', '--force', RELEASE_BUILDER], {
+  await run(['docker', 'buildx', 'prune', '--builder', RELEASE_BUILDER, '--all', '--force'], { allowFailure: true, log: false })
+  await run(['docker', 'buildx', 'rm', '--force', '--keep-state', RELEASE_BUILDER], {
     allowFailure: true,
     log: false,
   })

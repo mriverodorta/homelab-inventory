@@ -37,7 +37,7 @@ Commands:
   logs                     Show staging container logs
   stop                     Stop the staging container
   reset                    Remove incomplete local release state
-  cleanup-local            Remove release-owned Docker cache and volumes
+  cleanup-local            Clear release-owned caches without deleting volumes
   verify-push              Verify the current two-platform security receipt
   cleanup-candidates       Remove all temporary candidate tags from Docker Hub`)
 }

@@ -71,7 +71,8 @@ async function readVerifiedReceipt(paths, inputFingerprint, pin, verify, contrac
 }
 
 export async function buildCanonicalAgent({ root, destination, pin, runCommand = run }) {
-  await runCommand(['docker', 'buildx', 'rm', '--force', ARTIFACT_BUILDER], {
+  await runCommand(['docker', 'buildx', 'prune', '--builder', ARTIFACT_BUILDER, '--all', '--force'], { allowFailure: true, capture: true, log: false })
+  await runCommand(['docker', 'buildx', 'rm', '--force', '--keep-state', ARTIFACT_BUILDER], {
     allowFailure: true,
     capture: true,
     log: false,
@@ -89,7 +90,8 @@ export async function buildCanonicalAgent({ root, destination, pin, runCommand =
       root,
     ], { cwd: root })
   } finally {
-    await runCommand(['docker', 'buildx', 'rm', '--force', ARTIFACT_BUILDER], {
+    await runCommand(['docker', 'buildx', 'prune', '--builder', ARTIFACT_BUILDER, '--all', '--force'], { allowFailure: true, capture: true, log: false })
+    await runCommand(['docker', 'buildx', 'rm', '--force', '--keep-state', ARTIFACT_BUILDER], {
       allowFailure: true,
       capture: true,
       log: false,

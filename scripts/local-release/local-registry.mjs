@@ -23,11 +23,11 @@ export async function startLocalRegistry(prefix = 'homelab-inventory-release-reg
     }
     throw new Error('Local release registry did not become ready.')
   } catch (error) {
-    await run(['docker', 'rm', '--force', '--volumes', name], { allowFailure: true, log: false })
+    await run(['docker', 'rm', '--force', name], { allowFailure: true, log: false })
     throw error
   }
 }
 
 export async function stopLocalRegistry(registry) {
-  if (registry) await run(['docker', 'rm', '--force', '--volumes', registry.name], { allowFailure: true, log: false })
+  if (registry) await run(['docker', 'rm', '--force', registry.name], { allowFailure: true, log: false })
 }

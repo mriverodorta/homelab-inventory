@@ -60,6 +60,12 @@ Use `latest` only when you intentionally want the newest development image from 
 
 ## Security Maintenance Readiness
 
+Release cleanup preserves all Docker volumes. It prunes the task-owned builder
+cache before removing its builder with `--keep-state`, clears Trivy cache
+contents inside the existing volume, and removes temporary containers without
+`--volumes`. Cold builds remain mandatory; retaining an empty volume does not
+authorize retaining build cache or deleting other projects' volumes.
+
 Scheduled monitoring resolves each channel to a single immutable Linux amd64 or
 arm64 manifest. Trivy uses its remote image source and Scout uses `registry://`
 against that same digest. Neither scanner depends on exporting a partial local
