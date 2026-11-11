@@ -81,7 +81,7 @@
     "@msgpack/msgpack": "^3.1.3",
     "@tanstack/react-query": "^5.105.1",
     "@tanstack/react-table": "^9.3.1",
-    "@tanstack/react-virtual": "^3.14.13",
+    "@tanstack/react-virtual": "^3.14.26",
     "@xyflow/react": "^12.12.0",
     "casbin": "5.51.1",
     "class-variance-authority": "^0.7.1",
