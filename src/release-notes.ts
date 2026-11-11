@@ -1415,14 +1415,14 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.17.1',
     date: '2026-11-11',
-    channel: 'release',
+    channel: 'latest',
     title: 'Agent security and canvas maintenance',
     ...RELEASE_0_17_1_DETAILS,
   },
   {
     version: '0.17.0',
     date: '2026-11-09',
-    channel: 'latest',
+    channel: 'release',
     title: 'Computers, laptops and catalog v13',
     ...RELEASE_0_17_0_DETAILS,
   },
