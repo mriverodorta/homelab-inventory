@@ -5,7 +5,12 @@ const INVITATION_LIFETIME_MS = 24 * 60 * 60 * 1000
 
 function normalizeEmail(value) {
   const email = String(value ?? '').normalize('NFKC').trim().toLowerCase()
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw new Error('Email address is invalid.')
+  if (email.length > 254) throw new Error('Email address is invalid.')
+  const at = email.indexOf('@')
+  const dot = email.lastIndexOf('.')
+  if (at < 1 || email.indexOf('@', at + 1) !== -1 || dot <= at + 1 || dot === email.length - 1 || /\s/.test(email)) {
+    throw new Error('Email address is invalid.')
+  }
   return email
 }
 

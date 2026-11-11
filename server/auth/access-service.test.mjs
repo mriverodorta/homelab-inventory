@@ -38,6 +38,13 @@ function harness({ rebuild = vi.fn().mockResolvedValue(undefined), actorPermissi
 }
 
 describe('AccessService', () => {
+  it('normalizes role-key punctuation without repeated suffix searches', async () => {
+    const { service } = harness()
+    const role = await service.createRole(1, { name: 'Test role', key: `${'-'.repeat(100_000)}Network / Operator${'-'.repeat(100_000)}`, permissionIds: [] })
+    expect(role.key).toBe('network-operator')
+    await expect(service.createRole(1, { name: 'Invalid role', key: '-'.repeat(100_000), permissionIds: [] })).rejects.toThrow(/Role key is invalid/)
+  })
+
   it('creates a custom role and combines multiple role assignments', async () => {
     const { service } = harness()
     const role = await service.createRole(1, { name: 'Network operator', permissionIds: [301, 303] })

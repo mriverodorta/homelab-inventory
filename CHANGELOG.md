@@ -6,6 +6,16 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Security
+
+- Rebuild bundled Linux and FreeBSD agents with digest-pinned Go 1.26.11 to address CVE-2026-97054. Keep the agent version and source revision unchanged.
+- Replace backtracking-prone catalog and authentication input normalization with linear or bounded parsing, preserving historical catalog identities and accepted invitation/role formats.
+
+### Maintenance
+
+- Apply reviewed CodeQL 4.39.3, OpenID Client 6.8.9, Vite React 6.2.1, TanStack Virtual 3.14.26, React Flow 12.12.1 and aligned Tailwind 4.3.5 updates. Include canvas selection/observer cleanup and frontend compiler fixes.
+
+
 ## [0.17.0] - 2026-11-09
 
 ### Added

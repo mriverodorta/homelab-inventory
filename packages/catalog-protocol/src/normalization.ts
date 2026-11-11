@@ -35,13 +35,17 @@ export function normalizeFingerprintText(value: string): string {
 }
 
 export function normalizeManufacturer(value: string): string {
-  const normalized = normalizeFingerprintText(value).replace(/[.,]+$/g, '')
+  const text = normalizeFingerprintText(value)
+  let end = text.length
+  while (end > 0 && (text[end - 1] === '.' || text[end - 1] === ',')) end -= 1
+  const normalized = text.slice(0, end)
   return MANUFACTURER_ALIASES.get(normalized) ?? normalized
 }
 
 export function normalizeUnitText(value: string): string {
   return normalizeFingerprintText(value)
-    .replace(/\s*(gbps|mbps|ghz|mhz|khz|tb|gb|mb|kb|watts?|w)\b/g, '$1')
+    // normalizeFingerprintText has already collapsed all whitespace to one ASCII space.
+    .replace(/ ?(gbps|mbps|ghz|mhz|khz|tb|gb|mb|kb|watts?|w)\b/g, '$1')
     .replace(/\bwatts?\b/g, 'w')
 }
 
@@ -52,7 +56,7 @@ export function normalizeBoardIdentifier(value: string): string {
 export function normalizeVariantKey(value: string): string {
   return normalizeFingerprintText(value)
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(/^-|-$/g, '')
 }
 
 export function manufacturerAliasVersion(): number {

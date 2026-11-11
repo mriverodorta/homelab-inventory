@@ -52,6 +52,19 @@ function managerHarness() {
 }
 
 describe('InvitationService', () => {
+  it.each(['plain', '@example.com', 'user@.com', 'user@example.', 'user@@example.com', 'user@exam ple.com', 'user@exam\tple.com', 'user@example', '!.'.repeat(100_000)])('rejects malformed or oversized email without changing state', async (email) => {
+    const { service, store } = harness()
+    const before = store.getAuthenticationState()
+    await expect(service.create(1, { email, identityType: 'local', roleIds: [4] })).rejects.toThrow(/Email address is invalid/)
+    expect(store.getAuthenticationState()).toEqual(before)
+  })
+
+  it.each(['name+tag@example.com', 'name@sub.example.com', 'name@.example.com', `${'a'.repeat(242)}@example.com`])('preserves supported email syntax and the 254-character boundary', async (email) => {
+    const { service } = harness()
+    const created = await service.create(1, { email, identityType: 'local', roleIds: [4] })
+    expect(created.invitation.email).toBe(email)
+  })
+
   it('persists only a token hash and activates a local account with numeric role relationships', async () => {
     const { service, store } = harness()
     const created = await service.create(1, { email: 'USER@Example.COM', identityType: 'local', roleIds: [4] })

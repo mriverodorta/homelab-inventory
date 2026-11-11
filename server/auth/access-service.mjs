@@ -20,7 +20,7 @@ function cleanText(value, label, maxLength) {
 
 function cleanRoleKey(value) {
   const key = String(value ?? '').normalize('NFKC').trim().toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   if (!/^[a-z][a-z0-9-]{1,63}$/.test(key)) throw new Error('Role key is invalid.')
   return key
 }

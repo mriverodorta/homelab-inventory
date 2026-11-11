@@ -870,7 +870,15 @@ const RELEASE_0_17_0_DETAILS: UnreleasedReleaseNotes = {
   notes: ['Existing inventory and canvas relationships are preserved by the automatic database upgrade. Mini/Micro chassis and DIMM/SO-DIMM memory remain separate choices. Catalog publication requires coordinated Registry and viewer readiness.', 'Release cleanup clears disposable build and scanner caches without deleting Docker volumes.'],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = { highlights: [], fixes: [], notes: [] }
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Rebuild bundled agents with Go 1.26.11 to address CVE-2026-97054.',
+    'Harden catalog and authentication input parsing against excessive regex processing without changing catalog identities.',
+    'Update canvas, virtualized-list, authentication and build dependencies, including canvas selection and observer cleanup fixes.',
+  ],
+  notes: ['Update the scheduled CodeQL scanner to 4.39.3.'],
+}
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],

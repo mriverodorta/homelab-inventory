@@ -79,3 +79,18 @@ runtime regression test: add the consolidated notes, then run the full local
 test/build/security gates. Do not blindly add skip markers to runtime or
 security updates. GitHub PR integration and security advisory publication wait
 for the coordinated release; local readiness work does not bump the version.
+
+Go standard-library findings in bundled agents require rebuilding the entire
+agent bundle with the fixed, digest-pinned Go patch, even when agent source and
+agent version are unchanged. The artifact fingerprint includes the builder
+Dockerfile, so old compiler output must not be reused. Scan all bundled Linux
+and FreeBSD binaries in both final application architectures; UNKNOWN severity
+findings remain blocking.
+
+Security fixes in shared package source do not change an already-published npm
+tarball. Prepare a new package patch and verify frozen catalog vectors before
+coordinating exact-version/integrity adoption by Registry and LabGD. Never
+republish an existing version or change historical catalog hashes to deliver
+a parsing hardening fix. Local app readiness alone does not certify downstream
+deployments or close GitHub CodeQL alerts; those require the updated package
+rollout and a subsequent CodeQL analysis of the pushed source, respectively.

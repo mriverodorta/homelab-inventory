@@ -453,10 +453,17 @@ function splitBoardIdentity(item: CatalogTemplateItem): {
   const rawPartNumber = text(item.specs?.motherboardPartNumber) ?? text(item.specs?.partNumber)
   const explicitRevision = text(item.specs?.motherboardRevision) ?? text(item.specs?.boardRevision)
   if (!rawPartNumber) return { revision: explicitRevision ? normalizeBoardIdentifier(explicitRevision) : undefined }
-  const combined = normalizeText(rawPartNumber).match(/^(.+?)[\s/_-]+([A-Z]\d{2})$/i)
+  const normalized = normalizeText(rawPartNumber)
+  const suffix = normalized.slice(-3)
+  let separatorStart = normalized.length - 3
+  if (/^[A-Z]\d{2}$/i.test(suffix)) {
+    // Keep at least one character in the part number, matching historical projection.
+    while (separatorStart > 1 && /[ /_-]/.test(normalized[separatorStart - 1])) separatorStart -= 1
+  }
+  const combined = separatorStart < normalized.length - 3
   return {
-    partNumber: normalizeBoardIdentifier(combined?.[1] ?? rawPartNumber),
-    revision: normalizeBoardIdentifier(explicitRevision ?? combined?.[2] ?? '' ) || undefined,
+    partNumber: normalizeBoardIdentifier(combined ? normalized.slice(0, separatorStart) : rawPartNumber),
+    revision: normalizeBoardIdentifier(explicitRevision ?? (combined ? suffix : '')) || undefined,
   }
 }
 

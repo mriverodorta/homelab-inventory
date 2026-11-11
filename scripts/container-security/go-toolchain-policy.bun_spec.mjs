@@ -12,11 +12,11 @@ const releases = [
 ]
 
 describe('Go agent toolchain security policy', () => {
-  test('the repository builder includes the October 2026 security patch', () => {
+  test('the repository builder includes the November 2026 fix for CVE-2026-97054', () => {
     const source = readFileSync(new URL('../../docker/agent-artifact.Dockerfile', import.meta.url), 'utf8')
-    const securityReleases = [{ version: 'go1.26.10', stable: true }, { version: 'go1.26.9', stable: true }]
-    expect(assertCurrentGoToolchain({ dockerfile: source, releases: securityReleases }).pinned.version).toBe('1.26.10')
-    expect(() => assertCurrentGoToolchain({ dockerfile: dockerfile('1.26.9'), releases: securityReleases })).toThrow('Go 1.26.10 is the latest')
+    const securityReleases = [{ version: 'go1.26.11', stable: true }, { version: 'go1.26.10', stable: true }]
+    expect(assertCurrentGoToolchain({ dockerfile: source, releases: securityReleases }).pinned.version).toBe('1.26.11')
+    expect(() => assertCurrentGoToolchain({ dockerfile: dockerfile('1.26.10'), releases: securityReleases })).toThrow('Go 1.26.11 is the latest')
   })
 
   test('accepts the latest stable patch in the pinned minor line', () => {

@@ -76,6 +76,31 @@ describe('category-aware catalog projection', () => {
     if (first.status === 'eligible' && second.status === 'eligible') expect(first.identityHash).toBe(second.identityHash)
   })
 
+  it.each([' ', '\t', '/', '_', '-', ' /_- ', '/'.repeat(240)])('preserves combined motherboard identity across separator forms and long runs', async (separator) => {
+    const base = { id: 1, type: 'desktop', name: 'System', manufacturer: 'Example', model: 'Mini 1' }
+    const combined = await projectCatalogItem({ ...base, specs: { motherboardPartNumber: `BOARD1${separator}a00` } })
+    const explicit = await projectCatalogItem({ ...base, specs: { motherboardPartNumber: 'BOARD1', boardRevision: 'A00' } })
+    expect(combined.status).toBe('eligible')
+    expect(explicit.status).toBe('eligible')
+    if (combined.status === 'eligible' && explicit.status === 'eligible') {
+      expect(combined.identityHash).toBe(explicit.identityHash)
+      expect(combined.variantEvidence).toEqual(explicit.variantEvidence)
+    }
+  })
+
+  it('does not split invalid revision suffixes or override explicit revisions', async () => {
+    const base = { id: 1, type: 'desktop', name: 'System', manufacturer: 'Example', model: 'Mini 1' }
+    for (const suffix of ['A0', 'A000', 'AA0', '000']) {
+      const result = await projectCatalogItem({ ...base, specs: { motherboardPartNumber: `BOARD1${'_'.repeat(240)}${suffix}` } })
+      expect(result).toMatchObject({ status: 'eligible', variantEvidence: { motherboardPartNumber: `BOARD1${suffix}` } })
+      if (result.status === 'eligible') expect(result.variantEvidence?.motherboardRevision).toBeUndefined()
+    }
+    const explicit = await projectCatalogItem({ ...base, specs: { motherboardPartNumber: 'BOARD1_A00', boardRevision: 'B02' } })
+    expect(explicit).toMatchObject({ status: 'eligible', variantEvidence: { motherboardPartNumber: 'BOARD1', motherboardRevision: 'B02' } })
+    const oversized = await projectCatalogItem({ ...base, specs: { motherboardPartNumber: `BOARD1${'_'.repeat(100_000)}A00` } })
+    expect(oversized).toMatchObject({ status: 'eligible', variantEvidence: { source: 'generic' } })
+  })
+
   it('uses complete topology as a fallback but does not infer identity from partial topology', async () => {
     const base = { id: 1, type: 'desktop', name: 'System', manufacturer: 'Example', model: 'Mini 1' }
     const topology = { expansionSlots: [{ id: 1, key: 'riser', count: 1, pcieGeneration: 3, electricalLanes: 8 }] }
