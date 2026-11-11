@@ -5,7 +5,7 @@ verification, snapshots, and compatibility projections shared by Homelab
 Inventory and the official Registry.
 
 ```bash
-bun add --exact @homelab-inventory/catalog-protocol@0.2.0
+bun add --exact @homelab-inventory/catalog-protocol@0.2.1
 ```
 
 The npm package is intended for applications that must consume an exact public
@@ -18,6 +18,10 @@ Inventory's runtime fixtures and the Registry's frozen publication vectors.
 Version `0.2.0` adds laptop fingerprint 13 without changing any fingerprint 2-12
 output. Consumers must pin the exact tested version, not a range or distribution
 tag. The historical default `FINGERPRINT_VERSION` remains 3.
+
+Version `0.2.1` hardens input normalization against excessive regex processing.
+Historical canonical projections, identity/content hashes and catalog contract
+13 remain unchanged. Existing signed catalogs do not need republishing.
 
 ## Laptop v13
 

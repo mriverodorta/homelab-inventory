@@ -870,14 +870,20 @@ const RELEASE_0_17_0_DETAILS: UnreleasedReleaseNotes = {
   notes: ['Existing inventory and canvas relationships are preserved by the automatic database upgrade. Mini/Micro chassis and DIMM/SO-DIMM memory remain separate choices. Catalog publication requires coordinated Registry and viewer readiness.', 'Release cleanup clears disposable build and scanner caches without deleting Docker volumes.'],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_17_1_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Rebuild bundled agents with Go 1.26.11 to address CVE-2026-97054.',
     'Harden catalog and authentication input parsing against excessive regex processing without changing catalog identities.',
     'Update canvas, virtualized-list, authentication and build dependencies, including canvas selection and observer cleanup fixes.',
   ],
-  notes: ['Update the scheduled CodeQL scanner to 4.39.3.'],
+  notes: ['Update the scheduled CodeQL scanner to 4.39.3.', 'Shared Catalog Protocol 0.2.1 and Viewer React 0.1.2 keep existing catalog hashes and share contracts unchanged.'],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1406,6 +1412,13 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
+  {
+    version: '0.17.1',
+    date: '2026-11-11',
+    channel: 'release',
+    title: 'Agent security and canvas maintenance',
+    ...RELEASE_0_17_1_DETAILS,
+  },
   {
     version: '0.17.0',
     date: '2026-11-09',
