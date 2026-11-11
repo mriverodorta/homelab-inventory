@@ -14,7 +14,7 @@
         "@tanstack/react-query": "^5.105.1",
         "@tanstack/react-table": "^9.3.1",
         "@tanstack/react-virtual": "^3.14.13",
-        "@xyflow/react": "^12.12.0",
+        "@xyflow/react": "^12.12.1",
         "casbin": "5.51.1",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
@@ -60,7 +60,7 @@
     },
     "packages/catalog-protocol": {
       "name": "@homelab-inventory/catalog-protocol",
-      "version": "0.1.1",
+      "version": "0.2.0",
     },
     "packages/share-contract": {
       "name": "@homelab-inventory/share-contract",
@@ -71,17 +71,17 @@
     },
     "packages/viewer-model": {
       "name": "@homelab-inventory/viewer-model",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@homelab-inventory/share-contract": "0.1.0",
       },
     },
     "packages/viewer-react": {
       "name": "@homelab-inventory/viewer-react",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
-        "@homelab-inventory/viewer-model": "0.1.0",
-        "@xyflow/react": "^12.12.0",
+        "@homelab-inventory/viewer-model": "0.1.1",
+        "@xyflow/react": "^12.12.1",
         "lucide-react": "^1.66.0",
       },
       "peerDependencies": {
@@ -660,9 +660,9 @@
 
     "@vitest/spy": ["@vitest/spy@5.0.2", "", {}, "sha512-Ijc7T1nT9efNb5LxvjaBrEqw3f/QwUv5EE0nKqZxgqsaV/FxAAZ8baGylA8X/Z2oS4Lp+K74Jr6dTJsDKxJDeg=="],
 
-    "@xyflow/react": ["@xyflow/react@12.12.0", "", { "dependencies": { "@xyflow/system": "0.0.83", "classcat": "^5.0.3", "zustand": "^4.4.0" }, "peerDependencies": { "@types/react": ">=17", "@types/react-dom": ">=17", "react": ">=17", "react-dom": ">=17" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-74oXI0Rgm1Eu33cHQAd74J6oVgCH9mbFyTVQbsGgp2kmWwh0HdtBr2VP04z8mbPD+M/xO69nqG5dDEt7/EN2rQ=="],
+    "@xyflow/react": ["@xyflow/react@12.12.1", "", { "dependencies": { "@xyflow/system": "0.0.84", "classcat": "^5.0.3", "zustand": "^4.4.0" }, "peerDependencies": { "@types/react": ">=17", "@types/react-dom": ">=17", "react": ">=17", "react-dom": ">=17" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-g41OHmP+GL5wDBQKpgYt8AF6RlB4CrABtiStXhCMqdItK6gPdSpsuDk8V0YtdyvIvMPTjDJvkuLkz0JbSYu5Cw=="],
 
-    "@xyflow/system": ["@xyflow/system@0.0.83", "", { "dependencies": { "@types/d3-drag": "^3.0.7", "@types/d3-interpolate": "^3.0.4", "@types/d3-selection": "^3.0.10", "@types/d3-transition": "^3.0.8", "@types/d3-zoom": "^3.0.8", "d3-drag": "^3.0.0", "d3-interpolate": "^3.0.1", "d3-selection": "^3.0.0", "d3-zoom": "^3.0.0" } }, "sha512-a//eDjez3WZF47aaPTfVUDD0OINOq+WVwBZCRTqG+m0a5euX8EwlJ4jMY1Wxz0Ocj4xOeekJ70V22Pq0ll8RJw=="],
+    "@xyflow/system": ["@xyflow/system@0.0.84", "", { "dependencies": { "@types/d3-drag": "^3.0.7", "@types/d3-interpolate": "^3.0.4", "@types/d3-selection": "^3.0.10", "@types/d3-transition": "^3.0.8", "@types/d3-zoom": "^3.0.8", "d3-drag": "^3.0.0", "d3-interpolate": "^3.0.1", "d3-selection": "^3.0.0", "d3-zoom": "^3.0.0" } }, "sha512-96zfGFjH3oZ3T0MRdH4gJ0SlXuCIxbBuHVevZ4xry5UTxqjzjt010+LRdholgepq7jhrcaz1JNtzrETscwnkEA=="],
 
     "accepts": ["accepts@2.0.0", "", { "dependencies": { "mime-types": "^3.0.0", "negotiator": "^1.0.0" } }, "sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng=="],
 
